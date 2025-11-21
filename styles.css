@@ -477,7 +477,7 @@ input[type="text"].text-primer {
 }
 
 
-/* Optional: gentle gradient background for depth */
+/* gentle gradient background for depth */
 .support-icon.paypal-icon {
   background: linear-gradient(145deg, #ffffff, #e6f0fb);
 }
@@ -491,7 +491,7 @@ input[type="text"].text-primer {
 }
 
 .support-icon.dana-icon {
-  background: linear-gradient(145deg, #ffffff,#e9f4ff);    /* very light DANA blue highlight */
+  background: linear-gradient(145deg, #ffffff,#e9f4ff);    
 }
 
 /* --- SENT POPUP --- */
