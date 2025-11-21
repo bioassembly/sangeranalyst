@@ -1,0 +1,1 @@
+Demo data sourced from [Raw Sanger sequencing data for CRISPR-Cas9 edited cane toad tyrosinase gene / https://doi.org/10.1101/2025.05.15.654396], publicly available.
