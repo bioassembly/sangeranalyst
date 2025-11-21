@@ -4,7 +4,6 @@ const BACKEND_URL = 'https://shiddharta.pythonanywhere.com/process';
   ? 'http://127.0.0.1:8000/process'
   : 'https://shiddharta.pythonanywhere.com/process';
 */
-//'https://your-backend.onrender.com/analyze'; // <- replace with your Flask/FastAPI backend
 const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mldawblv'; 
 
 // Toggle Upload / Paste mode
@@ -284,11 +283,10 @@ sendBtn.addEventListener('click', async ()=>{
     payload.append('name', name);
     payload.append('email', email);
     payload.append('message', message);
-    // IMPORTANT: replace FORMSPREE_ENDPOINT constant above with your actual form endpoint from formspree.io
+
     const resp = await fetch(FORMSPREE_ENDPOINT, { method: 'POST', body: payload, headers: { 'Accept': 'application/json' }});
     if(!resp.ok){
-      // if Formspree not set up yet, it might respond 404 — handle gracefully
-      throw new Error('Failed to send feedback (check Formspree endpoint).');
+      throw new Error('Failed to send feedback.');
     }
     const d = await resp.json();
     // success
@@ -298,7 +296,7 @@ sendBtn.addEventListener('click', async ()=>{
     fbForm.reset();
   } catch(err){
     console.error(err);
-    alert('Failed to send feedback. Please ensure you replaced the Formspree endpoint in the script.');
+    alert('Failed to send feedback.');
   } finally {
     sendBtn.disabled = false;
     sendBtn.textContent = 'Send';
@@ -330,7 +328,7 @@ function hideSentPopup(){
 }
 
 // --- small helpers ---
-// Close tooltip/modal when window resizes for safety
+// Close tooltip/modal when window resizes
 window.addEventListener('resize', ()=>{ if(tooltipVisible) hideTooltip(); });
 
 // Accessibility: focus trap minimal (returns focus to report link when closing)
@@ -384,7 +382,7 @@ const danaBackdrop = document.getElementById("danaBackdrop");
 const danaModal = document.getElementById("danaModalBox");
 const danaClose = document.getElementById("danaClose");
 
-// optional: reference to support overlay (so we can hide it when opening DANA)
+// reference to support overlay 
 const supportOverlayEl = document.getElementById("supportOverlay");
 
 function openDanaModal() {
