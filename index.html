@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <!-- FAVICON -->
+  <link rel="icon" type="image/png" href="assets/favicon-96x96.png" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="shortcut icon" href="assets/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="SAnalyst" />
+  <!-- link rel="manifest" href="assets/site.webmanifest" /-->
+  <!-- Title -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SangerAnalyst</title>
+  <!-- OPEN GRAPH META -->
+  <meta property="og:title" content="SangerAnalyst" />
+  <meta property="og:description" content="Turns raw chromatogram assembly into a clean consensus sequence reports with trimming, QC tools, and visualization in one click." />
+  <meta property="og:image" content="https://yourdomain.com/og-image.png" /> <!-- Not yet-->
+  <meta property="og:url" content="https://yourdomain.com" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SangerAnalyst" />
+    <!-- TWITTER CARD -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SangerAnalyst">
+  <meta name="twitter:description" content="Turns raw chromatogram assemblies into a clean consensus sequence reports.">
+  <meta name="twitter:image" content="https://yourdomain.com/og-image.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>SangerAnalyst</h1>
+    <p>Turns raw chromatogram assemblies into a clean sequence — in one click.</p>
+  </header>
+
+  <main>
+    <div class="card" role="main" aria-labelledby="pageTitle">
+      <div class="upload-section" id="uploadSection">
+        <div>
+          <label for="">Forward read (.ab1)</label>
+          <input id="fileF" type="file" accept=".ab1" />
+        </div>
+
+        <div>
+          <label for="">Reverse read (.ab1)</label>
+          <input id="fileR" type="file" accept=".ab1" />
+        </div>
+
+        <div class="row">
+          <div style="flex:1">
+            <div class="primer-header">
+              <label for="primerF">Forward primer (optional, .fasta)</label>
+              <div class="primer-actions">
+                <button class="toggle-btn" data-target="F">✍</button>
+                <button class="reset-btn" data-target="F">⨉</button>
+              </div>
+            </div>
+            <input id="primerF-file" type="file" accept=".fasta,.fa,.txt" />
+            <input id="primerF-text" class="text-primer" type="text" maxlength="100" placeholder="Enter forward primer sequence (5' → 3')" style="display:none;"/>
+          </div>
+          <div style="flex:1">
+            <div class="primer-header">
+              <label for="primerR">Reverse primer (optional, .fasta)</label>
+              <div class="primer-actions">
+                <button class="toggle-btn" data-target="R">✍</button>
+                <button class="reset-btn" data-target="R">⨉</button>
+              </div>
+            </div>
+            <input id="primerR-file" type="file" accept=".fasta,.fa,.txt" />
+            <input id="primerR-text" class="text-primer" type="text" maxlength="100" placeholder="Enter reverse primer sequence (5' → 3')" style="display:none;"/>
+          </div>
+        </div>
+
+        <div class="row">
+        <!-- Mott -->
+          <div style="flex:1">
+            <label for="mottCutoff">
+              Mott Trim Cutoff 
+            </label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input id="mottCutoff" type="number" step="0.001" min="0.001" max="0.05" value="0.01" />
+              <button class="info-btn" id="mottInfoBtn" aria-label="Mott cutoff info">ℹ️</button>
+            </div>
+            <div class="small" style="margin-top:4px;">
+              Lower values remove more low-quality bases.
+            </div>
+          </div>
+
+        <!-- Phred -->
+        <div style="flex:1">
+          <label for="qPhred">
+            Min Base Phred Quality 
+          </label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="qPhred" type="number" step="1" min="1" max="70" value="20" />
+            <button class="info-btn" id="qPhredInfoBtn" aria-label="Phred threshold info">ℹ️</button>
+          </div>
+          <div class="small" style="margin-top:4px;">
+            Bases below this score will be replaced with “N”.
+          </div>
+        </div>
+      </div>
+
+        <div>
+          <button class="primary" id="analyzeBtn" type="button">Analyze</button>
+        </div>
+        <div id="loading" style="display:none; text-align:center; margin-top:20px;">
+          <div class="dna-spinner"></div>
+          <p>Processing…</p>
+        </div>
+
+        <div id="status" class="small" style="margin-top:10px;color:var(--muted)"></div>
+      </div>
+
+      <div class="result-section" id="results" aria-live="polite" style="display:none">
+        <div class="result-block">
+          <div class="result-title">High Confidence Consensus</div>
+          <div class="result-controls">
+          <button class="result-btn copy-btn" data-target="strict">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copy
+          </button>
+          <button class="result-btn download-btn" data-target="strict">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <path d="M7 10l5 5 5-5"/>
+              <path d="M12 15V3"/>
+            </svg>
+            Download
+          </button>
+        </div>
+          <pre id="strict">-</pre>
+        </div>
+
+        <div class="result-block">
+          <div class="result-title">Full Merge — only for mapping reference</div>
+          <div class="result-controls">
+          <button class="result-btn copy-btn" data-target="full">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copy
+          </button>
+          <button class="result-btn download-btn" data-target="full">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <path d="M7 10l5 5 5-5"/>
+              <path d="M12 15V3"/>
+            </svg>
+            Download
+          </button>
+        </div>
+          <pre id="full">-</pre>
+        </div>
+
+        <div id="primerResultBlock" class="result-block" style="display:none">
+          <div class="result-title">Primer Trimmed Consensus</div>
+          <div class="result-controls">
+          <button class="result-btn copy-btn" data-target="primerTrim">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copy
+          </button>
+          <button class="result-btn download-btn" data-target="primerTrim">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <path d="M7 10l5 5 5-5"/>
+              <path d="M12 15V3"/>
+            </svg>
+            Download
+          </button>
+        </div>
+          <pre id="primerTrim">-</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="how">
+      <h3>How Does It Works?</h3>
+      <p class="small" style="margin-top:8px">
+        SangerAnalyst runs quality trimming with Mott's Algorithm, aligns the reads and selects the highest-quality bases to generate a consensus, then removes primer & off-target regions to produce a clean final reports. </br></br> Powered by Biopython — trusted library for sequence processing and alignment.
+      </p>
+    </div>
+  </main>
+
+  <footer>
+    <div>© 2025 SangerAnalyst | Developed by 
+      <a class="linkish linkish" href="https://www.linkedin.com/in/shiddharta-arya-anggoro-cen-8b3931317/" target="_blank">Shiddharta Arya Anggoro Cen</a>
+    </div>
+    <div class="footer-links">
+      <a class="linkish linkish" id="reportLink">🧬 Report Problems</a>
+      <a class="linkish linkish" id="supportLink">☕ Be Supporter!</a>
+    </div>
+  </footer>
+
+  <!-- Tooltip (hidden by default) -->
+  <div id="m_tooltip" class="tooltip" style="display:none" role="dialog" aria-hidden="true">
+    <div style="font-weight:700;margin-bottom:6px">Mott Trim Cutoff</div>
+    <div style="font-size:13px;color:var(--muted)">
+      Recommended: <strong>0.01 = Q20</strong>.<br/>
+    </div>
+  </div>
+
+  <div id="q_tooltip" class="tooltip" style="display:none; width: 280px;" role="dialog" aria-hidden="true">
+    <div style="font-weight:700; margin-bottom:6px; font-size:15px;">
+      Phred Quality Score
+    </div>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:10px;">
+      Higher Q score ⇒ higher accuracy
+    </div>
+    <div style="display:grid; grid-template-columns: 45px 95px 1fr;column-gap: 8px;row-gap: 6px;font-size:13px;">
+      <div style="font-weight:600;">Q10</div>
+      <div>90% accuracy</div>
+      <div>1 error / 10 bp</div>
+      <div style="font-weight:600;">Q15</div>
+      <div>97% accuracy</div>
+      <div>1 error / 32 bp</div>
+      <div style="font-weight:600;">Q20</div>
+      <div>99% accuracy</div>
+      <div>1 error / 100 bp</div>
+      <div style="font-weight:600;">Q25</div>
+      <div>99.7% accuracy</div>
+      <div>1 error / 316 bp</div>
+      <div style="font-weight:600;">Q30</div>
+      <div>99.9% accuracy</div>
+      <div>1 error / 1000 bp</div>
+    </div>
+  </div>
+
+  <!-- Modal overlay -->
+  <div id="overlay" class="overlay" aria-hidden="true">
+    <div class="backdrop" id="backdrop"></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" id="modalBox">
+      <button class="close" id="modalClose" aria-label="Close">✕</button>
+      <h3 id="modalTitle">Report Problems</h3>
+      <p class="small">Tell me what went wrong or any suggestion. Your message will be sent privately.</p>
+
+      <form id="feedbackForm">
+        <label for="fb_name" class="small">Name</label>
+        <input id="fb_name" name="name" type="text" placeholder="Your name (optional)">
+        <label for="fb_email" class="small" style="margin-top:8px">Email</label>
+        <input id="fb_email" name="email" type="text" placeholder="you@example.com">
+        <label for="fb_message" class="small" style="margin-top:8px">Message</label>
+        <textarea id="fb_message" name="message" placeholder="Describe the issue or suggestion..." required></textarea>
+        <div class="actions">
+          <button type="button" class="btn-send" id="sendFeedbackBtn">Send</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sent confirmation popup -->
+  <div id="sentPopup" class="sent-popup" aria-hidden="true">
+    <button class="x-small" id="sentClose" aria-label="Close confirmation">✕</button>
+    <div class="check-wrap bounce" id="checkWrap" aria-hidden="true">
+      <!-- Blue SVG checkmark with stroke animation -->
+      <svg class="check-svg" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="26" cy="26" r="24" stroke="#e6f0ff" stroke-width="2" fill="#ffffff"/>
+        <path class="path" d="M14 27 L22 34 L38 18" stroke="#007bff" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="sent-text">Sent</div>
+  </div>
+
+  <!-- SUPPORT MODAL -->
+  <div id="supportOverlay" class="overlay" aria-hidden="true">
+    <div class="backdrop" id="supportBackdrop"></div>
+    <div class="modal" role="dialog" aria-modal="true" id="supportModalBox">
+      <button class="close" id="supportClose" aria-label="Close">✕</button>
+      <h3>Support Links</h3>
+      <p class="small" style="margin-bottom:16px;">
+        Your contribution keeps the server running and funds new features.
+      </p>
+      <div class="support-options">
+        <a href="https://paypal.me/bioassembly" target="_blank" class="support-item">
+          <div class="support-icon paypal-icon"><img src="assets/paypal.png" alt="PayPal"></div>
+          <span>PayPal</span>
+        </a>
+
+        <a href="https://ko-fi.com/shiddhartaa" target="_blank" class="support-item">
+          <div class="support-icon kofi-icon"><img src="assets/ko-fi.png" alt="Ko-fi"></div>
+          <span>Ko-fi</span>
+        </a>
+
+        <a id="openDanaQR" class="support-item">
+          <div class="support-icon dana-icon"><img src="assets/dana.png" alt="DANA"></div>
+          <span>DANA</span>
+        </a>
+
+        <a href="https://liberapay.com/shiddharta/donate" target="_blank" class="support-item">
+          <div class="support-icon lp-icon">💛</div>
+          <span>Liberapay</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- DANA QR MODAL -->
+  <div id="danaOverlay" class="overlay" aria-hidden="true">
+    <div class="backdrop" id="danaBackdrop"></div>
+    <div class="modal" role="dialog" aria-modal="true" id="danaModalBox">
+      <button class="close" id="danaClose" aria-label="Close">✕</button>
+      <h3>DANA QR</h3>
+      <div class="small" style="margin-bottom:18px;">
+        Scan this QR with your DANA app.
+      </div>
+      <div style="display:flex;justify-content:center;margin-bottom:12px;">
+        <img src="assets/dana-qr.jpeg" alt="DANA QR Code"
+             style="width:220px;height:auto;border-radius:8px;">
+      </div>
+      <div class="small" style="text-align:center;margin-bottom:16px;">
+        Your support means a lot, thank you 😁
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
