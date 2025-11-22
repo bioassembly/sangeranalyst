@@ -87,5 +87,5 @@ This project uses **BioPython** for AB1 parsing and core sequence utilities. Its
 ---
 
 <p align="center">
-  <sub>Made for practical, fast, and clean Sanger sequencing analysis.</sub>
+  <sub>Made for easy, fast, and accurate Sanger sequencing analysis.</sub>
 </p>
