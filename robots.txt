@@ -1,6 +1,7 @@
 User-agent: *
-Disallow: /assets/
+Disallow: /assets/support/
 Allow: /
 Allow: /*.js$
 Allow: /*.css$
 Sitemap: https://bioassembly.github.io/sangeranalyst/sitemap.xml
+
