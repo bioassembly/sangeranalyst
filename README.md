@@ -6,7 +6,7 @@ The application performs automated quality trimming, forward–reverse read alig
 
 This streamlined workflow enables users to obtain an accurate consensus sequence while saving significant time and avoiding the usual manual analysis headaches.
 
-Support new features on the web!
+Support new features on the web! 
 https://bioassembly.github.io/sangeranalyst
 
 ## **Demo Dataset**
@@ -40,5 +40,5 @@ These files are available in the `demo/` directory of this repository.
     - Min Base Phred Quality: Bases with Phred Quality below this value will be replaced as `N`.
 **4. Run `Analyze`**
   Your files will be sent to the backend server for processing. Each request typically completes in ~0.4 seconds, and all uploaded data will be deleted immediately after the processing is completed.
-**5. Result Inspection**
+  **5. Result Inspection**
   
