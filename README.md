@@ -44,6 +44,7 @@ Prepare the following files
 Default works well for most dataset, but you may fine-tune them:
   
 **- Mott Trim Cutoff:** Controls how aggresively low-quality regions are removed before alignment. A lower value retains less bases and can improve alignment accuracy, but setting it too low may also remove good bases. Adjust as needed for your dataset.  
+
 **- Min Base Phred Quality:** Bases with Phred Quality below this value will be replaced as `N`.
     
 **4. Run `Analyze`**
@@ -54,8 +55,12 @@ Your files will be sent to the backend server for processing. Each request typic
 
 You will be given 2 output (3 if primer included):
 
-**- High Confidence Consensus:** This consensus is generated from overlapping region of chromatograms alignment. Every conflict and gap is reported, and the higher phred quality bases among chromatograms will be chosen. This result is the highest confidence, most reliable consensus sequence. 
+**- High Confidence Consensus:** This consensus is generated from the overlapping region of forward-reverse alignment. All conflicts and gaps are reported, and only the higher quality bases among chromatograms are selected. This result is the highest confidence, most reliable consensus sequence. 
 
-**- Full Merge:** This consensus is literal merge of both chromatograms alignment (NOT RECOMMENDED FOR CONCLUSION /RAW). Every conflict and gap is reported too, and higher quality bases are chosen. However, this result INCLUDES ALL BASES, which is useful only for mapping reference so you can see where the high confidence consensus or primer trimmed consensus are located.
+**- Full Merge:** A literal end-to-end merge of both chromatograms alignment (NOT RECOMMENDED FOR CONCLUSION /RAW). All conflicts and gaps are still reported, and higher quality bases are selected. However, this result INCLUDES NON-OVERLAPPING AND LOW CONFIDENCE REGIONS. It's meaningful use is for mapping reference, so you can visualize where the high confidence consensus and primer-trimmed consensus sit within the full read span.
 
-**- Primer Trimmed Consensus:** This consensus is generated from 
+**- Primer Trimmed Consensus:** This consensus is derived by removing the primer regions from the raw merged sequence: 
+
+---Primer_F|{-----High Confidence Consensus----}|Primer_R---
+
+This yields the longest sequence you can extract from the chromatogram analysis that still methodologically reliable.
