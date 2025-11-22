@@ -4,6 +4,7 @@
   <img src="https://img.shields.io/badge/100%25-Free-FFD60A?style=for-the-badge" />
 </p>
 
+---
 
 SangerAnalyst provides a lightning-fast and straightforward way to process Sanger chromatograms within seconds—no installation required and 100% free.
 
@@ -83,6 +84,7 @@ This provides the longest methodologically reliable sequence, though meaning it'
 
 This project uses **BioPython** for AB1 parsing and core sequence utilities. Its modules provide reliable foundational functions required for Sanger data processing.
 
+---
 
 <p align="center">
   <sub>Made for easy, fast, and accurate Sanger sequencing analysis.</sub>
