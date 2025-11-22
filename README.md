@@ -1,4 +1,4 @@
-<h1 align="center"><img src="assets/favicon.ico" width="32" height="32"></img>SangerAnalyst — A Free, Web-Based Sanger Sequencing Processor</h1>
+<h1 align="center"><img src="assets/favicon.ico" width="32" height="32"></img> SangerAnalyst — A Free, Web-Based Sanger Sequencing Analysis Tool</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/100%25-Free-FFD60A?style=for-the-badge" />
