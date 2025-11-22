@@ -9,15 +9,15 @@ This streamlined workflow enables users to obtain an accurate consensus sequence
 Support new features on the web!
 https://bioassembly.github.io/sangeranalyst
 
-##**Demo Dataset**
+## **Demo Dataset**
 
 A publicly available control dataset is provided for users to test the tool without uploading their own files.
 
-###Source:
+### Source:
 CRISPR-Cas9 edited cane toad tyrosinase gene — control samples (public domain data)
 DOI: https://doi.org/10.1101/2025.05.15.654396
 
-###Included demo files:
+### Included demo files:
 - fwd_control.ab1
 - rev_control.ab1
 - primer_fwd.fasta
