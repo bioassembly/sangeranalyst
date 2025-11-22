@@ -6,5 +6,21 @@ The application performs automated quality trimming, forward–reverse read alig
 
 This streamlined workflow enables users to obtain an accurate consensus sequence while saving significant time and avoiding the usual manual analysis headaches.
 
-Support me on the web!
+Support new features on the web!
 https://bioassembly.github.io/sangeranalyst
+
+##**Demo Dataset**
+
+A publicly available control dataset is provided for users to test the tool without uploading their own files.
+
+###Source:
+CRISPR-Cas9 edited cane toad tyrosinase gene — control samples (public domain data)
+DOI: https://doi.org/10.1101/2025.05.15.654396
+
+###Included demo files:
+- fwd_control.ab1
+- rev_control.ab1
+- primer_fwd.fasta
+- primer_rev.fasta
+
+These files are available in the demo/ directory of this repository.
