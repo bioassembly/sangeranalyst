@@ -61,6 +61,27 @@ You will be given 2 output (3 if primer included):
 
 **- Primer Trimmed Consensus:** This consensus is derived by removing the primer regions from the raw merged sequence: 
 
----Primer_F|{-----High Confidence Consensus----}|Primer_R---
+`---Primer_F|-----High Confidence Consensus----|Primer_R---`
 
 This produces the longest sequence obtainable from the chromatogram analysis that remains methodologically reliable. However, note that the extended ends originate from only a single chromatogram, so they may still contain gaps or mismatches.
+
+## **Roadmap (To-Do Next)**
+The following features are planned for future releases:
+
+- Mobile UI Improvements:
+Optimized layout, larger interactive buttons, and better handling of long sequences on small screens.
+
+- Chromatogram Viewer (Web-Based):
+Interactive visualization of peak traces for manual inspection, especially helpful for conflict regions.
+
+- Gene Annotations:
+Automatic annotation of ORF.
+
+- Reference Mapping:
+Align the consensus directly to a reference sequence and highlight differences.
+
+- Batch Processing Mode:
+Upload multiple sample pairs at once.
+
+## **Acknowledgement**
+This project uses **BioPython** for AB1 parsing and core sequence utilities. Its modules provide the reliable foundational functions required for Sanger data processing.
