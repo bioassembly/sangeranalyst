@@ -32,12 +32,14 @@ These files are available in the `demo/` directory of this repository.
   
 **2. Upload Input Files**
   Prepare the following files
+  
     - Forward read chromatogram (.ab1)
     - Reverse read chromatogram (.ab1)
     - Primers (Optional, and you can type them too)
     
 **3. Adjust Processing Settings (Optional)**
   Default works well for most dataset, but you may fine-tune them:
+  
     - Mott Trim Cutoff: Controls how aggresively low-quality regions are removed before alignment. A lower value retains less bases and can improve alignment accuracy, but setting it too low may also remove good bases. Adjust as needed for your dataset.  
     - Min Base Phred Quality: Bases with Phred Quality below this value will be replaced as `N`.
     
