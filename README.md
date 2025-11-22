@@ -63,4 +63,4 @@ You will be given 2 output (3 if primer included):
 
 ---Primer_F|{-----High Confidence Consensus----}|Primer_R---
 
-This yields the longest sequence you can extract from the chromatogram analysis that still methodologically reliable.
+This produces the longest sequence obtainable from the chromatogram analysis that remains methodologically reliable. However, note that the extended ends originate from only a single chromatogram, so they may still contain gaps or mismatches.
