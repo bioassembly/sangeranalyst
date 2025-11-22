@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://bioassembly.github.io/sangeranalyst/sitemap.xml
