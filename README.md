@@ -31,7 +31,7 @@ DOI: https://doi.org/10.1101/2025.05.15.654396
 - `primer_fwd.fasta`  
 - `primer_rev.fasta`  
 
-These files are available in the `**demo/**` directory of this repository.
+These files are available in the **`demo/`** directory of this repository.
 
 ---
 
@@ -49,7 +49,7 @@ Prepare the following files:
 ### **3. Adjust Processing Settings (Optional)**  
 Defaults work well for most datasets.  
 - **Mott Trim Cutoff** — Controls how aggressively low-quality regions are removed before alignment.  
-- **Minimum Base Phred Quality** — Bases below this threshold are replaced with `**N**`.
+- **Minimum Base Phred Quality** — Bases below this threshold are replaced with **`N`**.
 
 ### **4. Run `Analyze`**  
 The backend processes each request in ~0.4 seconds, uploaded data is deleted immediately after processing.
