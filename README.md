@@ -35,20 +35,27 @@ Visit https://bioassembly.github.io/sangeranalyst
 
 Prepare the following files
   
-- Forward read chromatogram (.ab1)
-- Reverse read chromatogram (.ab1)
-- Primers (Optional, and you can type them too)
+**- Forward read chromatogram (.ab1)**
+**- Reverse read chromatogram (.ab1)**
+**- Primers (Optional, and you can type them too)**
     
 **3. Adjust Processing Settings (Optional)**
 
 Default works well for most dataset, but you may fine-tune them:
   
-- Mott Trim Cutoff: Controls how aggresively low-quality regions are removed before alignment. A lower value retains less bases and can improve alignment accuracy, but setting it too low may also remove good bases. Adjust as needed for your dataset.  
-- Min Base Phred Quality: Bases with Phred Quality below this value will be replaced as `N`.
+**- Mott Trim Cutoff:** Controls how aggresively low-quality regions are removed before alignment. A lower value retains less bases and can improve alignment accuracy, but setting it too low may also remove good bases. Adjust as needed for your dataset.  
+**- Min Base Phred Quality:** Bases with Phred Quality below this value will be replaced as `N`.
     
 **4. Run `Analyze`**
 
 Your files will be sent to the backend server for processing. Each request typically completes in ~0.4 seconds, and all uploaded data will be deleted immediately after the processing is completed.
   
-  **5. Result Inspection**
-  
+**5. Result Inspection**
+
+You will be given 2 output (3 if primer included):
+
+**- High Confidence Consensus:** This consensus is generated from overlapping region of chromatograms alignment. Every conflict and gap is reported, and the higher phred quality bases among chromatograms will be chosen. This result is the highest confidence, most reliable consensus sequence. 
+
+**- Full Merge:** This consensus is literal merge of both chromatograms alignment (NOT RECOMMENDED FOR CONCLUSION /RAW). Every conflict and gap is reported too, and higher quality bases are chosen. However, this result INCLUDES ALL BASES, which is useful only for mapping reference so you can see where the high confidence consensus or primer trimmed consensus are located.
+
+**- Primer Trimmed Consensus:** This consensus is generated from 
