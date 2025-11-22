@@ -1,4 +1,10 @@
-# SangerAnalyst – A Free, Web-Based Sanger Sequencing Processor
+<h1 align="center"><img src="assets/favicon.ico" width="32" height="32"></img>SangerAnalyst — A Free, Web-Based Sanger Sequencing Processor</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/100%25-Free-FFD60A?style=for-the-badge" />
+</p>
+
+---
 
 SangerAnalyst provides a lightning-fast and straightforward way to process Sanger chromatograms within seconds—no installation required and 100% free.
 
@@ -6,82 +12,80 @@ The application performs automated quality trimming, forward–reverse read alig
 
 This streamlined workflow enables users to obtain an accurate consensus sequence while saving significant time and avoiding the usual manual analysis headaches.
 
-Support new features on the web! 
+👉 **Support new features on the web:**  
 https://bioassembly.github.io/sangeranalyst
 
-## **Demo Dataset**
+---
+
+## 📂 Demo Dataset
 
 A publicly available control dataset is provided for users to test the tool without uploading their own files.
 
-### Source:
-CRISPR-Cas9 edited cane toad tyrosinase gene — control samples (public domain data)
+### **Source**
+CRISPR-Cas9 edited cane toad *tyrosinase* gene — control samples (public domain data)  
 DOI: https://doi.org/10.1101/2025.05.15.654396
 
-### Included demo files:
-- fwd_control.ab1
-- rev_control.ab1
-- primer_fwd.fasta
-- primer_rev.fasta
+### **Included demo files**
+- `fwd_control.ab1`  
+- `rev_control.ab1`  
+- `primer_fwd.fasta`  
+- `primer_rev.fasta`  
 
-These files are available in the `demo/` directory of this repository.
+These files are available in the `**demo/**` directory of this repository.
 
-## **Usage Guide**
+---
 
-**1. Open the Webpage**
+## 🚀 Usage Guide
 
-Visit https://bioassembly.github.io/sangeranalyst
-  
-**2. Upload Input Files**
+### **1. Open the Webpage**  
+Visit **https://bioassembly.github.io/sangeranalyst**
 
-Prepare the following files
-  
-**- Forward read chromatogram (.ab1)**
-**- Reverse read chromatogram (.ab1)**
-**- Primers (Optional, and you can type them too)**
-    
-**3. Adjust Processing Settings (Optional)**
+### **2. Upload Input Files**
+Prepare the following files:  
+- Forward read chromatogram (`.ab1`)  
+- Reverse read chromatogram (`.ab1`)  
+- Primers (optional; can be uploaded or typed)
 
-Default works well for most dataset, but you may fine-tune them:
-  
-**- Mott Trim Cutoff:** Controls how aggresively low-quality regions are removed before alignment. A lower value retains less bases and can improve alignment accuracy, but setting it too low may also remove good bases. Adjust as needed for your dataset.  
+### **3. Adjust Processing Settings (Optional)**  
+Defaults work well for most datasets.  
+- **Mott Trim Cutoff** — Controls how aggressively low-quality regions are removed before alignment.  
+- **Minimum Base Phred Quality** — Bases below this threshold are replaced with `**N**`.
 
-**- Min Base Phred Quality:** Bases with Phred Quality below this value will be replaced as `N`.
-    
-**4. Run `Analyze`**
+### **4. Run `Analyze`**  
+The backend processes each request in ~0.4 seconds, uploaded data is deleted immediately after processing.
 
-Your files will be sent to the backend server for processing. Each request typically completes in ~0.4 seconds, and all uploaded data will be deleted immediately after the processing is completed.
-  
-**5. Result Inspection**
+### **5. Inspect Results**
+You will receive 2 outputs (3 if primer included):
 
-You will be given 2 output (3 if primer included):
+#### 🔹 High-Confidence Consensus  
+Derived from the overlapping region of forward–reverse alignment. All conflicts and gaps are reported, and only the higher-quality base is selected.
 
-**- High Confidence Consensus:** This consensus is generated from the overlapping region of forward-reverse alignment. All conflicts and gaps are reported, and only the higher quality bases among chromatograms are selected. This result is the highest confidence, most reliable consensus sequence. 
+#### 🔹 Full Merge  
+A full-span merge of both chromatogram alignments (not recommended for conclusions). Useful for mapping and reference visualization.
 
-**- Full Merge:** A literal end-to-end merge of both chromatograms alignment (NOT RECOMMENDED FOR CONCLUSION /RAW). All conflicts and gaps are still reported, and higher quality bases are selected. However, this result INCLUDES NON-OVERLAPPING AND LOW CONFIDENCE REGIONS. It's meaningful use is for mapping reference, so you can visualize where the high confidence consensus and primer-trimmed consensus sit within the full read span.
+#### 🔹 Primer-Trimmed Consensus  
+Primer regions removed from the full merge:  
+`---Primer_F | -----High Confidence Consensus----- | Primer_R---`  
+This provides the longest methodologically reliable sequence, though meaning it's outside High Confidence Consensus region originate from single-read data, which may still have some mismatch or gap compared to the real life biologic DNA sequence.
 
-**- Primer Trimmed Consensus:** This consensus is derived by removing the primer regions from the raw merged sequence: 
+---
 
-`---Primer_F|-----High Confidence Consensus----|Primer_R---`
+## 🛠️ Roadmap (To-Do Next)
 
-This produces the longest sequence obtainable from the chromatogram analysis that remains methodologically reliable. However, note that the extended ends originate from only a single chromatogram, so they may still contain gaps or mismatches.
+- 📱 **Mobile UI improvements** — better layout, larger buttons, smoother long-sequence handling.  
+- 📈 **Chromatogram viewer** — interactive peak traces for conflict inspection.  
+- 🧬 **Gene annotations** — automatic ORF detection.  
+- 🧭 **Reference mapping** — align consensus to a reference and highlight differences.  
+- 📦 **Batch processing** — analyze multiple samples at once.
 
-## **Roadmap (To-Do Next)**
-The following features are planned for future releases:
+---
 
-- Mobile UI Improvements:
-Optimized layout, larger interactive buttons, and better handling of long sequences on small screens.
+## 📚 Acknowledgement
 
-- Chromatogram Viewer (Web-Based):
-Interactive visualization of peak traces for manual inspection, especially helpful for conflict regions.
+This project uses **BioPython** for AB1 parsing and core sequence utilities. Its modules provide reliable foundational functions required for Sanger data processing.
 
-- Gene Annotations:
-Automatic annotation of ORF.
+---
 
-- Reference Mapping:
-Align the consensus directly to a reference sequence and highlight differences.
-
-- Batch Processing Mode:
-Upload multiple sample pairs at once.
-
-## **Acknowledgement**
-This project uses **BioPython** for AB1 parsing and core sequence utilities. Its modules provide the reliable foundational functions required for Sanger data processing.
+<p align="center">
+  <sub>Made for practical, fast, and clean Sanger sequencing analysis.</sub>
+</p>
