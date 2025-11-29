@@ -51,8 +51,8 @@ Defaults work well for most datasets.
 - **Mott Trim Cutoff** — Controls how aggressively low-quality regions are removed before alignment.  
 - **Minimum Base Phred Quality** — Bases below this threshold are replaced with **`N`**.
 - **Secondary peak threshold (%)** — Controls the sensitivity for detecting mixed bases (heterozygotes).
-<img src="assets/secondary_peak-min.png" width="96" height="96" />
 
+  <img src="assets/secondary_peak-min.png" width="96" height="96"/>
 ### **4. Run `Analyze`**  
 The backend processes each request in ~0.4 seconds, uploaded data is deleted immediately after processing.
 
