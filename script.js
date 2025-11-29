@@ -14,15 +14,17 @@ document.querySelectorAll(".toggle-btn").forEach(btn => {
     const textInput = document.getElementById("primer" + target + "-text");
 
     if (fileInput.style.display !== "none") {
+      // Switch to TEXT mode
       fileInput.style.display = "none";
       textInput.style.display = "block";
       fileInput.value = "";
-      btn.textContent = "📁";
+      btn.textContent = "📁"; // Icon becomes Folder (click to go to file)
     } else {
+      // Switch to FILE mode
       fileInput.style.display = "block";
       textInput.style.display = "none";
       textInput.value = "";
-      btn.textContent = "✍";
+      btn.textContent = "✍"; // Icon becomes Pen (click to go to text)
     }
   });
 });
@@ -46,10 +48,14 @@ const mottTip = document.getElementById("m_tooltip");
 const qBtn = document.getElementById("qPhredInfoBtn");
 const qTip = document.getElementById("q_tooltip");
 
+const secBtn = document.getElementById("secPeakInfoBtn");
+const secTip = document.getElementById("sec_tooltip");
+
 // Hide all tooltips
 function hideTooltips() {
   mottTip.style.display = "none";
   qTip.style.display = "none";
+  secTip.style.display = "none"; // Hide secondary peak tooltip
 }
 
 // Toggle function
@@ -80,9 +86,16 @@ qBtn.addEventListener("click", (ev) => {
   toggleTooltip(qBtn, qTip);
 });
 
+// --- Secondary Peak tooltip ---
+secBtn.addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  toggleTooltip(secBtn, secTip);
+});
+
 // Prevent clicks inside tooltip from closing it
 mottTip.addEventListener("click", (ev) => ev.stopPropagation());
 qTip.addEventListener("click", (ev) => ev.stopPropagation());
+secTip.addEventListener("click", (ev) => ev.stopPropagation());
 
 // Clicking outside closes both
 document.addEventListener("click", hideTooltips);
@@ -91,18 +104,22 @@ document.addEventListener("click", hideTooltips);
 window.addEventListener("scroll", hideTooltips);
 
 //==================== ANALYZE HANDLER ===================
-// --- Validate and clean DNA primer sequence ---
+
 function cleanAndValidateDNA(seq) {
   if (!seq) return null;
+  
   // Remove FASTA headers, whitespace, digits, and non-letters
   let cleaned = seq
-    .replace(/^>.*$/gm, '')       // remove FASTA header lines
-    .replace(/[\s0-9]/g, '')      // remove whitespace and digits
+    .replace(/^>.*$/gm, '') 
+    .replace(/[\s0-9]/g, '')
     .toUpperCase();
-  // Check valid DNA characters
-  if (!/^[ATGCN]+$/.test(cleaned)) return null;
-  // Ensure reasonable primer length
-  if (cleaned.length < 10) return null;
+
+  // Updated Regex to support IUPAC ambiguity codes (R, Y, K, etc.)
+  if (!/^[ATGCNRYKMSWBDHV]+$/.test(cleaned)) return null;
+
+  // Ensure reasonable length
+  if (cleaned.length < 3) return null;
+  
   return cleaned;
 }
 
@@ -134,6 +151,7 @@ analyzeBtn.addEventListener('click', async ()=>{
   }
   const mott = document.getElementById('mottCutoff').value;
   const mphred = document.getElementById('qPhred').value;
+  const secPeak = document.getElementById('secPeak').value;
       
   if(!fF || !fR){ 
     status.textContent = "Please provide both .ab1 files.";
@@ -171,6 +189,7 @@ analyzeBtn.addEventListener('click', async ()=>{
   if(pR) form.append('primerR', pR);
   form.append('mottCutoff', mott);
   form.append('minPhred', mphred);
+  form.append('secondary_peak_threshold', secPeak);
 
   try{
     const resp = await fetch(BACKEND_URL, { method:'POST', body: form });
@@ -193,7 +212,7 @@ analyzeBtn.addEventListener('click', async ()=>{
   } catch(err){
     console.error(err);
     status.textContent = 'Error: ' + (err.message || err);
-    alert('Analysis failed — check console & backend URL.');
+    alert('Analysis failed — Sorry, the server is error.');
   } finally {
     loading.style.display = "none";
     analyzeBtn.disabled = false;
@@ -303,24 +322,24 @@ sendBtn.addEventListener('click', async ()=>{
   }
 });
 
-// --- Sent popup logic ---
+/// SENT POPUP
 const sentPopup = document.getElementById('sentPopup');
 const sentClose = document.getElementById('sentClose');
+let hideTimeout;
 
 function showSentPopup(){
-  sentPopup.classList.add('show');
   sentPopup.setAttribute('aria-hidden','false');
-  // add bounce class to check-wrap for lively effect
-  const checkWrap = document.getElementById('checkWrap');
-  checkWrap.classList.remove('bounce');
-  // force reflow to restart animation
-  void checkWrap.offsetWidth;
-  checkWrap.classList.add('bounce');
-
+  sentPopup.classList.add('show');
   // auto hide after 3s
-  const hideTimeout = setTimeout(()=> hideSentPopup(), 3000);
-  // clicking X closes early
-  sentClose.onclick = ()=> { clearTimeout(hideTimeout); hideSentPopup(); };
+  hideTimeout = setTimeout(()=>{
+    hideSentPopup();
+  }, 3000);
+  
+  // click X to hide early
+  sentClose.onclick = ()=> {
+    clearTimeout(hideTimeout);
+    hideSentPopup();
+  };
 }
 function hideSentPopup(){
   sentPopup.classList.remove('show');
@@ -329,10 +348,14 @@ function hideSentPopup(){
 
 // --- small helpers ---
 // Close tooltip/modal when window resizes
-window.addEventListener('resize', ()=>{ if(tooltipVisible) hideTooltip(); });
+window.addEventListener('resize', ()=>{
+  hideTooltips();
+});
 
 // Accessibility: focus trap minimal (returns focus to report link when closing)
-overlay.addEventListener('transitionend', ()=>{ if(!overlay.classList.contains('show')) reportLink.focus(); });
+overlay.addEventListener('transitionend', ()=>{
+  if(!overlay.classList.contains('show')) reportLink.focus();
+});
 
 // --- SUPPORT MODAL ---
 const supportLink = document.getElementById("supportLink");

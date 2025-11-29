@@ -43,14 +43,16 @@
   <main>
     <div class="card" role="main" aria-labelledby="pageTitle">
       <div class="upload-section" id="uploadSection">
-        <div>
-          <label for="">Forward read (.ab1)</label>
-          <input id="fileF" type="file" accept=".ab1" />
-        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label for="">Forward read (.ab1)</label>
+            <input id="fileF" type="file" accept=".ab1" />
+          </div>
 
-        <div>
-          <label for="">Reverse read (.ab1)</label>
-          <input id="fileR" type="file" accept=".ab1" />
+          <div style="flex:1">
+            <label for="">Reverse read (.ab1)</label>
+            <input id="fileR" type="file" accept=".ab1" />
+          </div>
         </div>
 
         <div class="row">
@@ -58,28 +60,27 @@
             <div class="primer-header">
               <label for="primerF">Forward primer (optional, .fasta)</label>
               <div class="primer-actions">
-                <button class="toggle-btn" data-target="F">✍</button>
+                <button class="toggle-btn" data-target="F">📁</button>
                 <button class="reset-btn" data-target="F">⨉</button>
               </div>
             </div>
-            <input id="primerF-file" type="file" accept=".fasta,.fa,.txt" />
-            <input id="primerF-text" class="text-primer" type="text" maxlength="100" placeholder="Enter forward primer sequence (5' → 3')" style="display:none;"/>
+            <input id="primerF-file" type="file" accept=".fasta,.fa,.txt" style="display:none;" />
+            <input id="primerF-text" class="text-primer" type="text" maxlength="100" placeholder="Enter forward primer sequence (5' → 3')" style="display:block;"/>
           </div>
           <div style="flex:1">
             <div class="primer-header">
               <label for="primerR">Reverse primer (optional, .fasta)</label>
               <div class="primer-actions">
-                <button class="toggle-btn" data-target="R">✍</button>
+                <button class="toggle-btn" data-target="R">📁</button>
                 <button class="reset-btn" data-target="R">⨉</button>
               </div>
             </div>
-            <input id="primerR-file" type="file" accept=".fasta,.fa,.txt" />
-            <input id="primerR-text" class="text-primer" type="text" maxlength="100" placeholder="Enter reverse primer sequence (5' → 3')" style="display:none;"/>
+            <input id="primerR-file" type="file" accept=".fasta,.fa,.txt" style="display:none;" />
+            <input id="primerR-text" class="text-primer" type="text" maxlength="100" placeholder="Enter reverse primer sequence (5' → 3')" style="display:block;"/>
           </div>
         </div>
 
         <div class="row">
-        <!-- Mott -->
           <div style="flex:1">
             <label for="mottCutoff">
               Mott Trim Cutoff 
@@ -88,25 +89,35 @@
               <input id="mottCutoff" type="number" step="0.001" min="0.001" max="0.05" value="0.01" />
               <button class="info-btn" id="mottInfoBtn" aria-label="Mott cutoff info">ℹ️</button>
             </div>
-            <div class="small" style="margin-top:4px;">
+            <div class="small">
               Lower values remove more low-quality bases.
             </div>
           </div>
 
-        <!-- Phred -->
-        <div style="flex:1">
-          <label for="qPhred">
-            Min Base Phred Quality 
-          </label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="qPhred" type="number" step="1" min="1" max="70" value="20" />
-            <button class="info-btn" id="qPhredInfoBtn" aria-label="Phred threshold info">ℹ️</button>
-          </div>
-          <div class="small" style="margin-top:4px;">
-            Bases below this score will be replaced with “N”.
+          <div style="flex:1">
+            <label for="qPhred">
+              Min Base Phred Quality 
+            </label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input id="qPhred" type="number" step="1" min="1" max="70" value="20" />
+              <button class="info-btn" id="qPhredInfoBtn" aria-label="Phred threshold info">ℹ️</button>
+            </div>
+            <div class="small">
+              Bases below this score will be replaced with “N”.
+            </div>
           </div>
         </div>
-      </div>
+
+        <div>
+          <label for="secPeak">Secondary peak threshold (%)</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="secPeak" type="number" step="1" min="1" max="100" value="33" />
+            <button class="info-btn" id="secPeakInfoBtn" aria-label="Secondary peak info">ℹ️</button>
+          </div>
+          <div class="small">
+            Secondary peaks reaching this percentage of the primary peak’s height will be reported.
+          </div>
+        </div>
 
         <div>
           <button class="primary" id="analyzeBtn" type="button">Analyze</button>
@@ -246,19 +257,35 @@
     </div>
   </div>
 
+  <div id="sec_tooltip" class="tooltip" style="display:none; width: 290px;" role="dialog" aria-hidden="true">
+    <div style="font-weight:700; margin-bottom:6px; font-size:15px;">
+      Secondary Peak Threshold
+    </div>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:6px;">
+      Controls the sensitivity for detecting mixed bases (heterozygotes).
+    </div>
+    <div style="font-size:13px;">
+      <p style="margin-bottom:3px"><strong>Default: 33%</strong></p>
+       A secondary peak is reported when its height reaches at least 33% of the primary peak.
+      <div style="text-align:center; margin-top:6px;">
+        <img src="assets/secondary_peak-min.png" width="96" height="96" alt="Secondary peak">
+      </div>
+    </div>
+  </div>
+
   <!-- Modal overlay -->
   <div id="overlay" class="overlay" aria-hidden="true">
     <div class="backdrop" id="backdrop"></div>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" id="modalBox">
       <button class="close" id="modalClose" aria-label="Close">✕</button>
       <h3 id="modalTitle">Report Problems</h3>
-      <p class="small">Tell me what went wrong or any suggestion. Your message will be sent privately.</p>
+      <p class="small">Tell me what went wrong or any suggestion?</p>
 
       <form id="feedbackForm">
         <label for="fb_name" class="small">Name</label>
         <input id="fb_name" name="name" type="text" placeholder="Your name (optional)">
         <label for="fb_email" class="small" style="margin-top:8px">Email</label>
-        <input id="fb_email" name="email" type="text" placeholder="you@example.com">
+        <input id="fb_email" name="email" type="text" placeholder="example@gmail.com">
         <label for="fb_message" class="small" style="margin-top:8px">Message</label>
         <textarea id="fb_message" name="message" placeholder="Describe the issue or suggestion..." required></textarea>
         <div class="actions">
