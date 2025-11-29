@@ -1,4 +1,4 @@
-<h1 align="center"><img src="assets/favicon.ico" width="32" height="32"></img> SangerAnalyst — A Free, Web-Based Sanger Sequencing Analysis Tool</h1>
+<h1 align="center"><img src="assets/favicon.ico" width="32" height="32" /> SangerAnalyst — A Free, Web-Based Sanger Sequencing Analysis Tool</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/100%25-Free-FFD60A?style=for-the-badge" />
@@ -50,6 +50,8 @@ Prepare the following files:
 Defaults work well for most datasets.  
 - **Mott Trim Cutoff** — Controls how aggressively low-quality regions are removed before alignment.  
 - **Minimum Base Phred Quality** — Bases below this threshold are replaced with **`N`**.
+- **Secondary peak threshold (%)** — Controls the sensitivity for detecting mixed bases (heterozygotes).
+<img src="assets/secondary_peak-min.png" width="96" height="96" />
 
 ### **4. Run `Analyze`**  
 The backend processes each request in ~0.4 seconds, uploaded data is deleted immediately after processing.
