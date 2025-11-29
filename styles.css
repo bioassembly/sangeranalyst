@@ -30,7 +30,7 @@ body{
 /* --- HEADER --- */
 header {
   text-align: center;
-  margin-top: var(--space-xl);
+  margin-top: 28px;
   margin-bottom: var(--space-xl);
 }
 header h1 {
@@ -140,7 +140,7 @@ input[type="text"] {
 .small{
   font-size:15px;
   color:var(--muted);
-  margin-top: var(--space-xs);
+  margin-top: var(--space-xxs);
 }
 
 .hint{
@@ -168,7 +168,7 @@ button.primary{
   border-radius:10px;
   font-weight:700;
   cursor:pointer;
-  margin-top:var(--space-sm);
+  margin-top:4px;
 }
 button.primary:hover{background:var(--accent-2)}
 
