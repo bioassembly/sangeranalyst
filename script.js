@@ -167,8 +167,11 @@ analyzeBtn.addEventListener('click', async ()=>{
     return analyzeBtn.disabled = false;
   }
 
-  if(fF.size > 5_000_000 || fR.size > 5_000_000 || pF_t > 5_000_000 || pR_t > 5_000_000) {
-      alert("Files are too large, max 5 MB per file.");
+  const pF_len = pF_t ? pF_t.length : 0;
+  const pR_len = pR_t ? pR_t.length : 0;
+
+  if(fF.size > 5_000_000 || fR.size > 5_000_000 || pF_len > 5_000_000 || pR_len > 5_000_000) {
+      alert("Files or input text are too large, max 5 MB (or 5M characters) per input.");
       return analyzeBtn.disabled = false;
   }
 
@@ -449,4 +452,5 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && danaOverlay?.classList.contains("show")) {
     closeDanaModal();
   }
+
 });
