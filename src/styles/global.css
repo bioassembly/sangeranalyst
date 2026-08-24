@@ -172,6 +172,25 @@ button.primary{
 }
 button.primary:hover{background:var(--accent-2)}
 
+.analyze-row{
+  display:flex;
+  gap:var(--space-sm);
+  align-items:center;
+}
+
+button.secondary{
+  background:#fff;
+  color:var(--accent);
+  border:1.5px solid var(--accent);
+  padding:calc(var(--space-sm) - 1.5px) var(--space-md);
+  border-radius:10px;
+  font-weight:600;
+  cursor:pointer;
+  margin-top:4px;
+}
+button.secondary:hover{background:rgba(7,89,181,0.06)}
+button.secondary:disabled{opacity:0.6;cursor:wait}
+
 /* --- RESULT SECTION --- */
 .result-section{
   margin-top:var(--space-lg);

@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "no-inline-style": "off",
+    "no-implicit-button-type": "off",
+    "hidden-focusable": "off",
+    "prefer-native-element": "off",
+    "wcag/h32": "off",
+    "void-style": "off",
+    "doctype-style": "off",
+    "no-trailing-whitespace": "off",
+    "no-raw-characters": "off",
+    "void-content": "off",
+    "no-dup-class": "off",
+    "unique-landmark": "off"
+  }
+}

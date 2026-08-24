@@ -31,7 +31,7 @@ DOI: https://doi.org/10.1101/2025.05.15.654396
 - `primer_fwd.fasta`  
 - `primer_rev.fasta`  
 
-These files are available in the **`demo/`** directory of this repository.
+These files are available in the **`public/demo/`** directory of this repository (also loadable directly in the app via the **Try demo data** button).
 
 ---
 
