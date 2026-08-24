@@ -1,0 +1,65 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'SangerAnalyst — Sanger Sequencing Analysis Tool',
+  description = 'SangerAnalyst is a fast and straightforward Sanger sequencing analysis tool. It performs quality trimming, forward–reverse alignment, consensus calling, primer trimming, and conflict reporting — instantly and without installation.',
+} = Astro.props;
+
+// Base-path aware helpers: GitHub Pages serves under /sangeranalyst/
+const b = import.meta.env.BASE_URL.replace(/\/$/, '');
+const withBase = (path: string) => new URL(import.meta.env.BASE_URL + path, Astro.site).href;
+const canonical = withBase('');
+const ogImage = withBase('assets/og-image.png');
+---
+
+<!doctype html>
+<html lang="en" data-base={import.meta.env.BASE_URL}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta
+      name="keywords"
+      content="Sanger sequencing, chromatogram analysis, ABIF file analysis, sequence trimming, consensus sequence generation, bioinformatics tool, primer trimming, Sanger read alignment, web-based sequencing tool, automated Sanger processing, DNA sequencing analysis"
+    />
+    <meta name="author" content="SangerAnalyst" />
+    <link rel="canonical" href={canonical} />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" href={`${b}/favicon.png`} sizes="96x96" />
+    <link rel="shortcut icon" href={`${b}/favicon.ico`} />
+    <link rel="apple-touch-icon" sizes="180x180" href={`${b}/assets/apple-touch-icon.png`} />
+    <link rel="manifest" href={`${b}/assets/site.webmanifest`} />
+    <meta name="apple-mobile-web-app-title" content="SangerAnalyst" />
+
+    <!-- Open graph -->
+    <meta property="og:title" content={title} />
+    <meta
+      property="og:description"
+      content="Analyze Sanger chromatograms in seconds: trimming, alignment, consensus calling, primer trimming, conflict reporting, and clean sequence output."
+    />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SangerAnalyst" />
+
+    <!-- Twitter card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta
+      name="twitter:description"
+      content="A fast, streamlined tool for processing Sanger sequencing reads directly in your browser."
+    />
+    <meta name="twitter:image" content={ogImage} />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
