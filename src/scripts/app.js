@@ -5,6 +5,8 @@ const BACKEND_URL = ['localhost', '127.0.0.1'].includes(window.location.hostname
   ? 'http://127.0.0.1:8000/process'
   : 'https://shiddharta.pythonanywhere.com/process';
 
+import { attachTraceViewer } from './traceviewer.js';
+
 const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mldawblv';
 
 // Base path of the deployed site (e.g. "/sangeranalyst/" on GitHub Pages)
@@ -154,6 +156,122 @@ function cleanAndValidateDNA(seq, minLen = 3) {
   return cleaned;
 }
 
+//==================== CHROMATOGRAM TRACE VIEWER ===================
+
+const traceSection = document.getElementById('traceSection');
+const traceMeta = document.getElementById('traceMeta');
+const traceError = { F: null, R: null };
+
+const traceViewer = attachTraceViewer({
+  canvas: document.getElementById('traceCanvas'),
+  metaEl: traceMeta,
+  zoomInBtn: document.getElementById('traceZoomIn'),
+  zoomOutBtn: document.getElementById('traceZoomOut'),
+  resetBtn: document.getElementById('traceReset'),
+});
+
+const traceFiles = { F: null, R: null };
+let activeTrace = 'F';
+
+document.querySelectorAll('.trace-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    activeTrace = tab.dataset.trace;
+    document.querySelectorAll('.trace-tab').forEach(t => {
+      const on = t.dataset.trace === activeTrace;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    showActiveTrace();
+  });
+});
+
+function showActiveTrace() {
+  const file = traceFiles[activeTrace];
+  if (!file) return;
+  if (file instanceof File) {
+    traceViewer.load(file, file.name).catch(err => {
+      console.error(err);
+      traceMeta.textContent = `Could not display "${file.name}" — not a valid ABIF chromatogram.`;
+    });
+  }
+}
+
+function setInlineError(inputId, msg) {
+  let el = document.getElementById(inputId + 'Err');
+  if (!msg) {
+    if (el) el.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = inputId + 'Err';
+    el.className = 'file-err';
+    el.setAttribute('role', 'alert');
+    document.getElementById(inputId).after(el);
+  }
+  el.textContent = msg;
+}
+
+async function handleReadSelected(inputId, which) {
+  const file = document.getElementById(inputId).files[0];
+  traceFiles[which] = file || null;
+  setInlineError(inputId, null);
+  if (!file) {
+    refreshTraceSection();
+    return;
+  }
+  if (file.size > 5_000_000) {
+    setInlineError(inputId, 'File is larger than 5 MB.');
+  } else {
+    const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+    const magic = String.fromCharCode(...head);
+    if (magic !== 'ABIF') {
+      setInlineError(inputId, 'This does not look like an ABIF chromatogram (missing ABIF signature).');
+    }
+  }
+  refreshTraceSection();
+  if (activeTrace === which) showActiveTrace();
+}
+
+function refreshTraceSection() {
+  const any = traceFiles.F || traceFiles.R;
+  traceSection.style.display = any ? 'block' : 'none';
+  if (!any) return;
+  if (!traceFiles[activeTrace]) {
+    const other = activeTrace === 'F' ? 'R' : 'F';
+    if (traceFiles[other]) {
+      activeTrace = other;
+      document.querySelectorAll('.trace-tab').forEach(t => {
+        const on = t.dataset.trace === activeTrace;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+  }
+  showActiveTrace();
+}
+
+document.getElementById('fileF').addEventListener('change', () => handleReadSelected('fileF', 'F'));
+document.getElementById('fileR').addEventListener('change', () => handleReadSelected('fileR', 'R'));
+
+//==================== SEQUENCE OUTPUT RENDERING ===================
+
+const IUPAC_RE = /([RYKMSWBDHV])/g;
+
+function renderSeq(el, text) {
+  if (!text || text === '—') {
+    el.textContent = '—';
+    return;
+  }
+  const lines = text.split('\n').map(line => {
+    const escaped = line
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (line.startsWith('#') || line.startsWith('>')) return escaped;
+    return escaped.replace(IUPAC_RE, '<span class="amb">$1</span>');
+  });
+  el.innerHTML = lines.join('\n');
+}
+
 //==================== ANALYZE HANDLER ===================
 
 const analyzeBtn = document.getElementById('analyzeBtn');
@@ -255,14 +373,25 @@ analyzeBtn.addEventListener('click', async () => {
     const controller = new AbortController();
     timeoutId = setTimeout(() => controller.abort(), 60000);
     const resp = await fetch(BACKEND_URL, { method:'POST', body: form, signal: controller.signal });
-    if(!resp.ok) throw new Error('Server returned ' + resp.status);
+    if (!resp.ok) {
+      let msg = 'Server returned ' + resp.status;
+      try {
+        const errBody = await resp.json();
+        if (errBody && errBody.error) msg = errBody.error;
+      } catch { /* non-JSON error page */ }
+      if (resp.status === 413) msg = 'Upload too large — the server accepts at most 20 MB per request.';
+      if (resp.status === 500) msg = 'Analysis failed on the server. Double-check your chromatogram files and try again.';
+      const e = new Error(msg);
+      e.displayMessage = msg;
+      throw e;
+    }
     const data = await resp.json();
     const outputs = data.outputs;
 
-    strictEl.textContent = outputs.consensus_strict || '—';
-    fullEl.textContent = outputs.consensus_full || '—';
+    renderSeq(strictEl, outputs.consensus_strict || '—');
+    renderSeq(fullEl, outputs.consensus_full || '—');
     if(outputs.primer_trim){
-      primerEl.textContent = outputs.primer_trim;
+      renderSeq(primerEl, outputs.primer_trim);
       primerBlock.style.display = 'block';
     } else {
       primerBlock.style.display = 'none';
@@ -279,7 +408,7 @@ analyzeBtn.addEventListener('click', async () => {
     } else if (err instanceof TypeError) {
       setStatus('Error: could not reach the analysis server. Check your connection or try again later.', true);
     } else {
-      setStatus('Error: ' + (err.message || err), true);
+      setStatus('Error: ' + (err.displayMessage || err.message || err), true);
     }
   } finally {
     clearTimeout(timeoutId);
@@ -307,6 +436,8 @@ loadDemoBtn?.addEventListener('click', async () => {
     ]);
     setInputFile(document.getElementById('fileF'), new File([fwd], 'fwd_control.ab1', { type: 'octet-stream' }));
     setInputFile(document.getElementById('fileR'), new File([rev], 'rev_control.ab1', { type: 'octet-stream' }));
+    await handleReadSelected('fileF', 'F');
+    await handleReadSelected('fileR', 'R');
 
     const [pFwd, pRev] = await Promise.all([
       fetch(`${BASE}demo/primer_fwd.fasta`).then(r => r.text()),

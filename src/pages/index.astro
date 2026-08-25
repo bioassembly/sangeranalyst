@@ -101,6 +101,33 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
         <div id="status" class="small" role="status" style="margin-top:10px;color:var(--muted)"></div>
       </div>
 
+      <div class="trace-section" id="traceSection" style="display:none">
+        <div class="trace-head">
+          <div class="trace-tabs" role="tablist" aria-label="Chromatogram trace">
+            <button class="trace-tab active" id="traceTabF" data-trace="F" type="button" role="tab" aria-selected="true">Forward</button>
+            <button class="trace-tab" id="traceTabR" data-trace="R" type="button" role="tab" aria-selected="false">Reverse</button>
+          </div>
+          <div class="trace-controls">
+            <button class="trace-btn" id="traceZoomOut" type="button" aria-label="Zoom out">−</button>
+            <button class="trace-btn" id="traceZoomIn" type="button" aria-label="Zoom in">+</button>
+            <button class="trace-btn" id="traceReset" type="button" aria-label="Reset view">Reset</button>
+          </div>
+        </div>
+        <div class="trace-wrap">
+          <canvas id="traceCanvas" height="240"></canvas>
+        </div>
+        <div class="small trace-meta">
+          <span id="traceMeta"></span>
+          <span class="trace-legend">
+            <span style="color:#16a34a">A</span>
+            <span style="color:#2563eb">C</span>
+            <span style="color:#111827">G</span>
+            <span style="color:#dc2626">T</span>
+            · scroll to zoom, drag to pan
+          </span>
+        </div>
+      </div>
+
       <div class="result-section" id="results" aria-live="polite" style="display:none">
         <div class="result-block">
           <div class="result-title">High Confidence Consensus</div>
@@ -128,8 +155,8 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
 
         <div class="result-block">
           <div class="result-title">Full Merge — full-length merged span</div>
-          <div class="small" style="margin-top:4px">
-            Best for longer amplicons: on a ~1,500 bp template, ~900 bp forward and reverse reads share only ~300 bp of overlap — this output spans the full length. Bases outside the overlap come from a single read.
+          <div class="result-hint">
+            Best for longer amplicons — with ~900 bp forward/reverse reads on a ~1,500 bp template, only ~300 bp overlaps. This output spans the full length; bases outside the overlap come from a single read.
           </div>
           <div class="result-controls">
           <button class="result-btn copy-btn" data-target="full" type="button">
