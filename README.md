@@ -63,7 +63,7 @@ You will receive 2 outputs (3 if primer included):
 Derived from the overlapping region of forward–reverse alignment (statistically validated). Conflicts and gaps are reported: sequencing errors are corrected from the higher-quality strand, and heterozygous positions confirmed by secondary peaks are kept as IUPAC ambiguity codes.
 
 #### 🔹 Full Merge  
-A full-span merge of both chromatogram alignments. This is where long reads shine: on a ~1,500 bp amplicon, ~900 bp forward and reverse reads share only ~300 bp of overlap — the Full Merge reconstructs the entire 1,500 bp span, while bases outside the overlap originate from a single read (keep that caveat in mind for conclusions). For short amplicons it is mainly useful for mapping and reference visualization.
+A full-span merge of both chromatogram alignments. This is where longer amplicons shine: on a ~1,500 bp template, ~900 bp forward and reverse reads share only ~300 bp of overlap — the Full Merge reconstructs the entire 1,500 bp span, while bases outside the overlap originate from a single read (keep that caveat in mind for conclusions). For short amplicons it is mainly useful for mapping and reference visualization.
 
 #### 🔹 Primer-Trimmed Consensus  
 Primer regions removed from the full merge:  
