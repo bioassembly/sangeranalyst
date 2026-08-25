@@ -633,7 +633,19 @@ input[type="text"].text-primer {
   }
   .trace-head { flex-direction: column; align-items: stretch; }
   .trace-controls { justify-content: flex-end; }
-  .trace-tab { padding: 8px 16px; }
+  .trace-body { flex-direction: column; }
+  .trace-amp {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+  .trace-amp input[type="range"] {
+    writing-mode: horizontal-tb;
+    direction: ltr;
+    -webkit-appearance: slider-horizontal;
+    appearance: auto;
+    width: 160px;
+    height: 24px;
+  }
   .faq-item summary { font-size: 14.5px; padding: 14px 2px; }
   footer { flex-direction: column; gap: 10px; text-align: center; }
 }
@@ -699,23 +711,49 @@ input[type="text"].text-primer {
   gap:12px;
   flex-wrap:wrap;
 }
-.trace-tabs{display:flex;gap:6px}
-.trace-tab{
-  border:1.5px solid transparent;
-  background:transparent;
+.trace-title{
+  font-weight:700;
   color:var(--muted);
-  font-weight:600;
   font-size:14px;
-  padding:6px 14px;
-  border-radius:999px;
-  cursor:pointer;
-  transition:all .2s ease;
 }
-.trace-tab:hover{color:var(--accent)}
-.trace-tab.active{
-  color:var(--accent);
-  border-color:var(--accent);
-  background:rgba(0,123,255,0.06);
+.trace-body{
+  display:flex;
+  gap:12px;
+  margin-top:10px;
+}
+.trace-stack{flex:1;min-width:0}
+.trace-row{margin-bottom:10px}
+.trace-row:last-child{margin-bottom:0}
+.trace-label{
+  font-size:11.5px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.04em;
+  color:#6b7280;
+  margin:0 0 3px 2px;
+}
+.trace-amp{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:0 2px;
+}
+.trace-amp input[type="range"]{
+  writing-mode:vertical-lr;
+  direction:rtl;
+  -webkit-appearance:slider-vertical;
+  width:22px;
+  height:180px;
+  accent-color:var(--accent);
+  cursor:pointer;
+}
+.trace-amp .small{
+  font-size:11px;
+  text-align:center;
+  line-height:1.2;
+  color:#6b7280;
 }
 .trace-controls{display:flex;gap:6px}
 .trace-btn{
@@ -737,14 +775,14 @@ input[type="text"].text-primer {
   overflow:hidden;
   background:#fff;
 }
-#traceCanvas{
+.trace-wrap canvas{
   display:block;
   width:100%;
-  height:240px;
+  height:190px;
   touch-action:none;
   cursor:grab;
 }
-#traceCanvas:active{cursor:grabbing}
+.trace-wrap canvas:active{cursor:grabbing}
 .trace-meta{
   margin-top:8px;
   display:flex;
@@ -770,4 +808,21 @@ pre .amb{
   font-size:13px;
   color:#b91c1c;
   font-weight:600;
+}
+
+/* Mobile trace overrides (must come after .trace-* base rules) */
+@media (max-width: 640px) {
+  .trace-amp input[type="range"]{
+    writing-mode: horizontal-tb;
+    direction: ltr;
+    -webkit-appearance: slider-horizontal;
+    appearance: auto;
+    width: 160px;
+    height: 24px;
+  }
+  .trace-amp{
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+  .trace-wrap canvas{ height: 150px; }
 }
