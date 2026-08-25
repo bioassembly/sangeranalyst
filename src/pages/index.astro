@@ -6,7 +6,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 <BaseLayout>
   <header>
-    <h1>SangerAnalyst</h1>
+    <h1 id="pageTitle">SangerAnalyst <span style="display:block;font-size:0.55em;font-weight:500">Free Online Sanger Sequencing Analysis Tool</span></h1>
     <p>Turns raw chromatogram assemblies into a clean sequence — in one click.</p>
   </header>
 
@@ -184,6 +184,36 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
       <p class="small" style="margin-top:8px">
         SangerAnalyst trims low-quality regions with Mott's algorithm, verifies the forward–reverse overlap is statistically real, aligns the reads and builds a quality-weighted consensus — sequencing errors are corrected from the higher-quality strand, while true heterozygous positions (confirmed by secondary peaks) are kept as IUPAC ambiguity codes. Primer &amp; off-target regions are then trimmed away for a clean final report. <br/><br/> Powered by Biopython — trusted library for sequence processing and alignment.
       </p>
+    </div>
+
+    <div class="how" id="faq">
+      <h3>Frequently Asked Questions</h3>
+      <div class="small" style="margin-top:8px; display:grid; gap:14px;">
+        <div>
+          <strong>What file types does SangerAnalyst support?</strong>
+          <p style="margin:4px 0 0">Applied Biosystems <code>.ab1</code> chromatogram files for the forward and reverse reads. Primers are optional — upload them as FASTA (<code>.fasta</code>, <code>.fa</code>, <code>.txt</code>) or paste the sequence directly.</p>
+        </div>
+        <div>
+          <strong>Is SangerAnalyst free to use?</strong>
+          <p style="margin:4px 0 0">Yes — completely free, no account, nothing to install. Upload your chromatograms and download the results.</p>
+        </div>
+        <div>
+          <strong>How does it merge forward and reverse reads?</strong>
+          <p style="margin:4px 0 0">Reads are trimmed with Mott's algorithm, oriented automatically, aligned, and combined into a quality-weighted consensus. Sequencing errors are corrected from the higher-quality strand, and the overlap is statistically validated before the high-confidence consensus is produced.</p>
+        </div>
+        <div>
+          <strong>Can it detect heterozygotes or mixed templates?</strong>
+          <p style="margin:4px 0 0">Yes. Secondary peaks above your threshold that corroborate a forward–reverse disagreement are called as IUPAC ambiguity codes (R, Y, K, M, S, W) in the consensus — the same principle behind PolyPhred-style mutation detection.</p>
+        </div>
+        <div>
+          <strong>Does it work with longer amplicons like 16S rRNA (~1,500 bp)?</strong>
+          <p style="margin:4px 0 0">Yes. With ~900 bp reads sharing ~300 bp of overlap, the High-Confidence Consensus covers the validated overlap while the Full Merge reconstructs the entire ~1,500 bp span. Primer trimming then yields the longest methodologically reliable sequence.</p>
+        </div>
+        <div>
+          <strong>Do I need to install anything?</strong>
+          <p style="margin:4px 0 0">No. Open the page, drop in your chromatograms, and download the results.</p>
+        </div>
+      </div>
     </div>
   </main>
 

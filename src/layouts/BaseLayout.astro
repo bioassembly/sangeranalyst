@@ -7,8 +7,8 @@ interface Props {
 }
 
 const {
-  title = 'SangerAnalyst — Sanger Sequencing Analysis Tool',
-  description = 'SangerAnalyst is a fast and straightforward Sanger sequencing analysis tool. It performs quality trimming, forward–reverse alignment, consensus calling, primer trimming, and conflict reporting — instantly and without installation.',
+  title = 'SangerAnalyst — Free Online Sanger Sequencing Analysis (.ab1)',
+  description = 'Free online Sanger sequencing analysis: upload .ab1 forward & reverse reads for quality trimming, read merging, heterozygote detection and primer trimming.',
 } = Astro.props;
 
 // Base-path aware helpers: GitHub Pages serves under /sangeranalyst/
@@ -16,6 +16,83 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
 const withBase = (path: string) => new URL(import.meta.env.BASE_URL + path, Astro.site).href;
 const canonical = withBase('');
 const ogImage = withBase('assets/og-image.png');
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebApplication',
+      name: 'SangerAnalyst',
+      url: canonical,
+      image: ogImage,
+      applicationCategory: 'ScienceApplication',
+      operatingSystem: 'Any (web browser)',
+      description,
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      featureList: [
+        'AB1 chromatogram upload and analysis',
+        "Mott quality trimming",
+        'Forward–reverse read merging with quality-weighted consensus',
+        'Heterozygote detection via secondary peaks (IUPAC ambiguity codes)',
+        'Primer and off-target region trimming',
+        'Conflict reporting between forward and reverse reads',
+      ],
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'What file types does SangerAnalyst support?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Applied Biosystems .ab1 chromatogram files for the forward and reverse reads. Primers are optional and can be uploaded as FASTA (.fasta/.fa/.txt) or pasted directly as sequence text.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Is SangerAnalyst free to use?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes — SangerAnalyst is completely free and requires no account or installation. Upload your chromatograms and download the results.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'How does SangerAnalyst merge forward and reverse reads?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: "Reads are trimmed with Mott's algorithm, oriented automatically, aligned, and combined into a quality-weighted consensus. Sequencing errors are corrected from the higher-quality strand, and the overlap is statistically validated before a high-confidence consensus is produced.",
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Can SangerAnalyst detect heterozygotes or mixed templates?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. Secondary peaks above your threshold that corroborate a forward–reverse disagreement are called as IUPAC ambiguity codes (R, Y, K, M, S, W) in the consensus, following PolyPhred-style mutation-detection practice.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Does it work with longer amplicons like 16S rRNA (~1,500 bp)?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. With ~900 bp forward and reverse reads sharing ~300 bp of overlap, the High-Confidence Consensus covers the validated overlap while the Full Merge output reconstructs the entire ~1,500 bp span. Primer trimming then yields the longest methodologically reliable sequence.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Do I need to install anything?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'No. SangerAnalyst is a web tool — open the page, drop in your chromatograms, and download the results. Nothing to install or configure.',
+          },
+        },
+      ],
+    },
+  ],
+};
 ---
 
 <!doctype html>
@@ -27,10 +104,12 @@ const ogImage = withBase('assets/og-image.png');
     <meta name="description" content={description} />
     <meta
       name="keywords"
-      content="Sanger sequencing, chromatogram analysis, ABIF file analysis, sequence trimming, consensus sequence generation, bioinformatics tool, primer trimming, Sanger read alignment, web-based sequencing tool, automated Sanger processing, DNA sequencing analysis"
+      content="Sanger sequencing analysis, ab1 file analysis, chromatogram viewer, forward reverse consensus, heterozygote detection Sanger, Mott trimming, primer trimming, 16S Sanger analysis, free sequencing tool, DNA sequencing software, bioinformatics tool"
     />
     <meta name="author" content="SangerAnalyst" />
+    <meta name="robots" content="index, follow" />
     <link rel="canonical" href={canonical} />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
 
     <!-- Icons -->
     <link rel="icon" type="image/png" href={`${b}/favicon.png`} sizes="96x96" />
@@ -41,10 +120,7 @@ const ogImage = withBase('assets/og-image.png');
 
     <!-- Open graph -->
     <meta property="og:title" content={title} />
-    <meta
-      property="og:description"
-      content="Analyze Sanger chromatograms in seconds: trimming, alignment, consensus calling, primer trimming, conflict reporting, and clean sequence output."
-    />
+    <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
     <meta property="og:url" content={canonical} />
     <meta property="og:type" content="website" />
@@ -53,10 +129,7 @@ const ogImage = withBase('assets/og-image.png');
     <!-- Twitter card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
-    <meta
-      name="twitter:description"
-      content="A fast, streamlined tool for processing Sanger sequencing reads directly in your browser."
-    />
+    <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
   </head>
   <body>
