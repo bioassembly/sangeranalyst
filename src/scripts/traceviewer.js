@@ -343,8 +343,9 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
     renderers.R.setRead(rev);
     const parts = [];
 
+    let rcBases = null;
     if (fwd && rev) {
-      const rcBases = revcomp(rev.bases);
+      rcBases = revcomp(rev.bases);
       const aln = alignColumns(fwd.bases, rcBases);
       if (aln) {
         fwd.colOf = aln.colOfA;
@@ -383,10 +384,29 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
 
     if (fwd) parts.unshift(`${nameF} (${fwd.bases.length} bases)`);
     if (rev) parts.splice(fwd ? 1 : 0, 0, `${nameR} (${rev.bases.length} bases)`);
+
+    let stats = null;
+    if (fwd && rev && fwd.colOf && rcBases) {
+      let both = 0, match = 0, i = 0, j = 0;
+      while (i < fwd.bases.length && j < rcBases.length) {
+        const ca = fwd.colOf[i], cb = rev.colOf[j];
+        if (ca === cb) {
+          both++;
+          if (fwd.bases[i] === rcBases[j]) match++;
+          i++; j++;
+        } else if (ca < cb) i++;
+        else j++;
+      }
+      if (both > 0) {
+        stats = { shared: both, identity: match / both };
+        parts.push(`overlap ${both} bases · ${Math.round(stats.identity * 100)}% identity`);
+      }
+    }
     if (metaEl) metaEl.textContent = parts.join(' · ');
 
     fitView();
     draw();
+    return stats;
   }
 
   zoomInBtn?.addEventListener('click', () => zoom(1.4, 0.5));
