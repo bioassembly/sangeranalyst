@@ -208,6 +208,8 @@ async function refreshTraces() {
     catch { notes.push(`"${r.name}" is not a valid ABIF chromatogram`); }
   }
   traceViewer.setData(fwd, rev, f?.name ?? '', r?.name ?? '');
+  document.getElementById('traceLabelR').textContent =
+    rev ? 'Reverse (reverse-complemented)' : 'Reverse';
   if (notes.length) {
     traceMeta.textContent = (traceMeta.textContent ? traceMeta.textContent + ' · ' : '') + notes.join(' · ');
   }

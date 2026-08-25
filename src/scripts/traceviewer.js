@@ -338,7 +338,16 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
         fwd.colOf = aln.colOfA;
         rev.colOf = aln.colOfB;
         // Reverse read is rendered reverse-complemented: flip its base-indexed
-        // arrays so base j of the revcomp maps to its original peak sample.
+        // arrays so base j of the revcomp maps to its original peak sample,
+        // and complement-swap the channels (sample order is untouched — base
+        // j's peak lives at the ORIGINAL sample of the base it came from,
+        // but under the complement base's channel color).
+        const comp = { A: 'T', T: 'A', G: 'C', C: 'G' };
+        const swapped = {};
+        for (const b of Object.keys(rev.channels)) {
+          swapped[b] = rev.channels[comp[b]] || rev.channels[b];
+        }
+        rev.channels = swapped;
         rev.bases = rcBases;
         rev.ploc = [...rev.ploc].reverse();
         if (rev.qual) rev.qual = [...rev.qual].reverse();

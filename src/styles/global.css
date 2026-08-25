@@ -634,18 +634,6 @@ input[type="text"].text-primer {
   .trace-head { flex-direction: column; align-items: stretch; }
   .trace-controls { justify-content: flex-end; }
   .trace-body { flex-direction: column; }
-  .trace-amp {
-    flex-direction: row;
-    justify-content: flex-end;
-  }
-  .trace-amp input[type="range"] {
-    writing-mode: horizontal-tb;
-    direction: ltr;
-    -webkit-appearance: slider-horizontal;
-    appearance: auto;
-    width: 160px;
-    height: 24px;
-  }
   .faq-item summary { font-size: 14.5px; padding: 14px 2px; }
   footer { flex-direction: column; gap: 10px; text-align: center; }
 }
@@ -717,11 +705,9 @@ input[type="text"].text-primer {
   font-size:14px;
 }
 .trace-body{
-  display:flex;
-  gap:12px;
   margin-top:10px;
 }
-.trace-stack{flex:1;min-width:0}
+.trace-stack{min-width:0}
 .trace-row{margin-bottom:10px}
 .trace-row:last-child{margin-bottom:0}
 .trace-label{
@@ -732,28 +718,22 @@ input[type="text"].text-primer {
   color:#6b7280;
   margin:0 0 3px 2px;
 }
-.trace-amp{
+.trace-amp-row{
   display:flex;
-  flex-direction:column;
   align-items:center;
-  justify-content:center;
-  gap:8px;
-  padding:0 2px;
+  gap:12px;
+  padding:2px 4px 0;
 }
-.trace-amp input[type="range"]{
-  writing-mode:vertical-lr;
-  direction:rtl;
-  -webkit-appearance:slider-vertical;
-  width:22px;
-  height:180px;
+.trace-amp-row .small{
+  font-size:12px;
+  color:#6b7280;
+  white-space:nowrap;
+}
+.trace-amp-row input[type="range"]{
+  flex:1;
+  max-width:320px;
   accent-color:var(--accent);
   cursor:pointer;
-}
-.trace-amp .small{
-  font-size:11px;
-  text-align:center;
-  line-height:1.2;
-  color:#6b7280;
 }
 .trace-controls{display:flex;gap:6px}
 .trace-btn{
@@ -812,17 +792,5 @@ pre .amb{
 
 /* Mobile trace overrides (must come after .trace-* base rules) */
 @media (max-width: 640px) {
-  .trace-amp input[type="range"]{
-    writing-mode: horizontal-tb;
-    direction: ltr;
-    -webkit-appearance: slider-horizontal;
-    appearance: auto;
-    width: 160px;
-    height: 24px;
-  }
-  .trace-amp{
-    flex-direction: row;
-    justify-content: flex-end;
-  }
   .trace-wrap canvas{ height: 150px; }
 }
