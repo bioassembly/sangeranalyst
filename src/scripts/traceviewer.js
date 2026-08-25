@@ -283,7 +283,7 @@ function createReadRenderer(canvas) {
   return { draw, setAmplitude, setRead };
 }
 
-export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOutBtn, resetBtn, ampSlider }) {
+export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOutBtn, resetBtn, ampSlider, posSlider }) {
   let reads = { F: null, R: null };
   let totalCols = 0;
   let view = { col: 0, colsPerPx: 1 };
@@ -291,6 +291,13 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
     F: createReadRenderer(canvasF),
     R: createReadRenderer(canvasR),
   };
+
+  function syncPosSlider() {
+    if (!posSlider) return;
+    const visible = canvasF.clientWidth * view.colsPerPx;
+    posSlider.max = String(Math.max(1, Math.round(totalCols - visible)));
+    posSlider.value = String(Math.round(view.col));
+  }
 
   function fitView() {
     // Start zoomed into the first ~40 bases (Benchling-style) instead of
@@ -311,6 +318,7 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
   function draw() {
     renderers.F.draw(view);
     renderers.R.draw(view);
+    syncPosSlider();
   }
 
   function zoom(factor, centerRatio = 0.5) {
@@ -370,7 +378,7 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
     else { canvasR.style.display = 'none'; canvasR.parentElement.style.display = 'none'; }
 
     if (fwd) parts.unshift(`${nameF} (${fwd.bases.length} bases)`);
-    if (rev) parts.splice(fwd ? 1 : 0, 0, `${nameR} (${rev.bases.length} bases, reverse-complemented)`);
+    if (rev) parts.splice(fwd ? 1 : 0, 0, `${nameR} (${rev.bases.length} bases)`);
     if (metaEl) metaEl.textContent = parts.join(' · ');
 
     fitView();
@@ -384,6 +392,12 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
     const amp = parseFloat(ampSlider.value);
     renderers.F.setAmplitude(amp);
     renderers.R.setAmplitude(amp);
+    draw();
+  });
+
+  posSlider?.addEventListener('input', () => {
+    view.col = parseFloat(posSlider.value) || 0;
+    clampView();
     draw();
   });
 
