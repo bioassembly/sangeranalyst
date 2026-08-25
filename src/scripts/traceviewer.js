@@ -210,19 +210,42 @@ function createReadRenderer(canvas) {
     pool.sort((a, b) => a - b);
     const scaleMax = Math.max(pool.length ? pool[Math.floor(pool.length * 0.995)] : 1, 10);
 
-    const qualH = read.qual ? 10 : 0;
-    const padBottom = 18, padTop = qualH + 6;
+    const padBottom = 18;
+    const qualH = read.qual ? 20 : 0;
+    const posH = 12;
+    const padTop = posH + qualH + 4;
     const plotH = h - padBottom - padTop;
     const baseline = h - padBottom;
+    const spacing = 1 / view.colsPerPx;
 
-    // Quality strip
+    // Position ruler (1-based), adaptive tick spacing
+    const steps = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
+    const step = steps.find(s => s * spacing >= 60) || 2000;
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    const firstTick = Math.max(1, Math.ceil(view.col / step) * step);
+    for (let k = firstTick; k < view.col + w * view.colsPerPx; k += step) {
+      const px = (k - view.col) / view.colsPerPx;
+      if (px < -20 || px > w + 20) continue;
+      ctx.fillStyle = '#9aa3b2';
+      ctx.fillRect(px - 0.5, 0, 1, 4);
+      ctx.fillText(String(k + 1), px, 11);
+    }
+
+    // Quality strip: colored bar per base, numeric Q value when zoomed in
     if (read.qual) {
+      const showQNums = spacing >= 14;
       for (let i = 0; i < read.bases.length; i++) {
         const col = read.colOf ? read.colOf[i] : i;
         const px = (col - view.col) / view.colsPerPx;
-        if (px < -3 || px > w + 3) continue;
-        ctx.fillStyle = qualColor(read.qual[i]);
-        ctx.fillRect(px - 1.5, 0, 3, 7);
+        if (px < -4 || px > w + 4) continue;
+        const c = qualColor(read.qual[i]);
+        ctx.fillStyle = c;
+        ctx.fillRect(px - 1.5, posH + 12, 3, 7);
+        if (showQNums) {
+          ctx.font = '8px monospace';
+          ctx.fillText(String(read.qual[i]), px, posH + 9);
+        }
       }
     }
 
@@ -244,7 +267,6 @@ function createReadRenderer(canvas) {
     }
 
     // Base labels, colored by base
-    const spacing = 1 / view.colsPerPx;
     if (spacing >= 9) {
       ctx.font = '700 11px monospace';
       ctx.textAlign = 'center';
@@ -271,7 +293,10 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
   };
 
   function fitView() {
-    view.colsPerPx = Math.max(totalCols / canvasF.clientWidth, 0.02);
+    // Start zoomed into the first ~40 bases (Benchling-style) instead of
+    // squashing the whole read into the canvas.
+    const initialCols = Math.min(40, Math.max(totalCols, 1));
+    view.colsPerPx = initialCols / canvasF.clientWidth;
     view.col = 0;
   }
 
