@@ -91,7 +91,7 @@ function revcomp(s) {
 // Semi-global (overlap) Needleman-Wunsch: end gaps are free, so the reads
 // align by their true overlap regardless of differing start/end offsets —
 // same semantics as the backend's PairwiseAligner configuration.
-function alignColumns(a, b) {
+export function alignColumns(a, b) {
   const n = a.length, m = b.length;
   if (n === 0 || m === 0 || n * m > MAX_ALIGN_CELLS) return null;
   const W = m + 1;
