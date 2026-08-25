@@ -227,7 +227,7 @@ function createReadRenderer(canvas) {
     for (let k = firstTick; k < view.col + w * view.colsPerPx; k += step) {
       const px = (k - view.col) / view.colsPerPx;
       if (px < -20 || px > w + 20) continue;
-      ctx.fillStyle = '#9aa3b2';
+      ctx.fillStyle = '#4b5563';
       ctx.fillRect(px - 0.5, 0, 1, 4);
       ctx.fillText(String(k + 1), px, 11);
     }
