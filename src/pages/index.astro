@@ -73,7 +73,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
               <button class="info-btn" id="qPhredInfoBtn" type="button" aria-label="Phred threshold info" aria-expanded="false" aria-controls="q_tooltip">ℹ️</button>
             </div>
             <div class="small">
-              Bases below this score will be replaced with “N”.
+              Bases below this score are masked as “N” — including conflicts where both strands are low-quality.
             </div>
           </div>
         </div>
@@ -85,7 +85,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
             <button class="info-btn" id="secPeakInfoBtn" type="button" aria-label="Secondary peak info" aria-expanded="false" aria-controls="sec_tooltip">ℹ️</button>
           </div>
           <div class="small">
-            Secondary peaks reaching this percentage of the primary peak’s height will be reported.
+            Secondary peaks reaching this percentage of the primary peak’s height are reported — and mark true heterozygous positions as IUPAC ambiguity codes (R, Y, …) in the consensus.
           </div>
         </div>
 
@@ -179,7 +179,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
     <div class="how">
       <h3>How Does It Works?</h3>
       <p class="small" style="margin-top:8px">
-        SangerAnalyst runs quality trimming with Mott's Algorithm, aligns the reads and selects the highest-quality bases to generate a consensus, then removes primer &amp; off-target regions to produce a clean final reports. <br/><br/> Powered by Biopython — trusted library for sequence processing and alignment.
+        SangerAnalyst trims low-quality regions with Mott's algorithm, verifies the forward–reverse overlap is statistically real, aligns the reads and builds a quality-weighted consensus — sequencing errors are corrected from the higher-quality strand, while true heterozygous positions (confirmed by secondary peaks) are kept as IUPAC ambiguity codes. Primer &amp; off-target regions are then trimmed away for a clean final report. <br/><br/> Powered by Biopython — trusted library for sequence processing and alignment.
       </p>
     </div>
   </main>

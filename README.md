@@ -60,7 +60,7 @@ The backend processes each request in ~0.4 seconds, uploaded data is deleted imm
 You will receive 2 outputs (3 if primer included):
 
 #### 🔹 High-Confidence Consensus  
-Derived from the overlapping region of forward–reverse alignment. All conflicts and gaps are reported, and only the higher-quality base is selected.
+Derived from the overlapping region of forward–reverse alignment (statistically validated). Conflicts and gaps are reported: sequencing errors are corrected from the higher-quality strand, and heterozygous positions confirmed by secondary peaks are kept as IUPAC ambiguity codes.
 
 #### 🔹 Full Merge  
 A full-span merge of both chromatogram alignments (not recommended for conclusions). Useful for mapping and reference visualization.
