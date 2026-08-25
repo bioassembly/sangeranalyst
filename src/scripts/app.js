@@ -214,7 +214,7 @@ async function refreshTraces() {
 
   const warn = document.getElementById('traceWarn');
   if (overlapStats && overlapStats.identity < 0.7) {
-    warn.textContent = `Low trace similarity: only ${Math.round(overlapStats.identity * 100)}% identity over ${overlapStats.shared} shared bases. These reads may not overlap, or may not be from the same template.`;
+    warn.textContent = 'Low identity — these reads may not be from the same template.';
     warn.style.display = 'block';
   } else {
     warn.style.display = 'none';
