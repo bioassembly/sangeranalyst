@@ -717,16 +717,16 @@ input[type="text"].text-primer {
   font-weight:700;
   text-transform:uppercase;
   letter-spacing:0.04em;
-  color:#6b7280;
+  color:#374151;
   margin:0 0 3px 2px;
 }
 .trace-scroll{
   overflow-x:scroll;
   overflow-y:hidden;
-  height:14px;
-  border:1px solid #e9ebef;
-  border-radius:7px;
-  background:#f3f4f6;
+  height:16px;
+  border:1px solid #d7dde6;
+  border-radius:8px;
+  background:#eef0f4;
 }
 .trace-scroll-spacer{height:1px}
 .trace-amp{
@@ -748,9 +748,10 @@ input[type="text"].text-primer {
 }
 .trace-amp .small{
   font-size:11px;
+  font-weight:600;
   text-align:center;
   line-height:1.2;
-  color:#6b7280;
+  color:#374151;
 }
 .trace-controls{display:flex;gap:6px}
 .trace-btn{
@@ -786,7 +787,7 @@ input[type="text"].text-primer {
   justify-content:space-between;
   gap:12px;
   flex-wrap:wrap;
-  color:#6b7280;
+  color:#374151;
 }
 .trace-legend span{font-weight:700}
 
@@ -829,17 +830,17 @@ pre .amb{
 
 /* Always-visible scrollbar thumb for the trace position bar */
 .trace-scroll{
-  scrollbar-color:#c3cbd7 #f3f4f6;
+  scrollbar-color:#7c8698 #eef0f4;
   scrollbar-width:auto;
 }
-.trace-scroll::-webkit-scrollbar{height:14px}
+.trace-scroll::-webkit-scrollbar{height:16px}
 .trace-scroll::-webkit-scrollbar-track{
-  background:#f3f4f6;
-  border-radius:7px;
+  background:#eef0f4;
+  border-radius:8px;
 }
 .trace-scroll::-webkit-scrollbar-thumb{
-  background:#c3cbd7;
-  border-radius:7px;
-  border:2px solid #f3f4f6;
+  background:#7c8698;
+  border-radius:8px;
+  border:2px solid #eef0f4;
 }
-.trace-scroll::-webkit-scrollbar-thumb:hover{background:#9aa3b2}
+.trace-scroll::-webkit-scrollbar-thumb:hover{background:#4b5563}
