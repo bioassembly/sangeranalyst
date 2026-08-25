@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Astro static site for SangerAnalyst — single page (`src/pages/index.astro`), vanilla CSS (`src/styles/global.css`), one client script (`src/scripts/app.js`). No Tailwind, no MDX, no tests.
+Astro static site for SangerAnalyst — single page (`src/pages/index.astro`), vanilla CSS (`src/styles/global.css`), client scripts `src/scripts/app.js` (main) + `src/scripts/traceviewer.js` (chromatogram viewer, imported by app.js). No Tailwind, no MDX, no tests.
 
 ## Commands
 
@@ -32,7 +32,10 @@ Response JSON: `data.outputs.consensus_strict`, `data.outputs.consensus_full`, o
 
 ## Coupling points & gotchas
 
-- Element IDs are the coupling point between `index.astro` and `app.js` (`fileF`, `fileR`, `mottCutoff`, `qPhred`, `secPeak`, `primerF-file`/`primerF-text`, `primerR-*`, result `<pre>`s `strict`/`full`/`primerTrim`, `loadDemoBtn`). Renaming one side breaks the other silently.
+- Element IDs are the coupling point between `index.astro` and `app.js` (`fileF`, `fileR`, `mottCutoff`, `qPhred`, `secPeak`, `primerF-file`/`primerF-text`, `primerR-*`, result `<pre>`s `strict`/`full`/`primerTrim`, `loadDemoBtn`, trace viewer: `traceSection`/`traceTabF`/`traceTabR`/`traceCanvas`/`traceMeta`/`traceZoomIn`/`traceZoomOut`/`traceReset`). Renaming one side breaks the other silently.
+- The chromatogram viewer (`traceviewer.js`) parses AB1 **client-side** — directory entries are 28 bytes with type/size at +8/+10, count at +12, dataSize at +16, dataOffset at +20; decode numerics by `elemSize` (type codes are unreliable across instruments); `dataSize <= 4` means data is inline in the entry's handle field. Y-axis uses a 99.5th-percentile window scale so injection spikes don't flatten the trace.
+- Consensus outputs are rendered via `renderSeq` (innerHTML) which wraps IUPAC ambiguity codes in `<span class="amb">` on non-`#`/non-`>` lines. Copy/download use `innerText`, so spans don't leak into copied text.
+- File inputs pre-validate on change: ABIF magic bytes + 5 MB size, inline error `<div class="file-err">` inserted after the input (`fileFErr`/`fileRErr`). Backend errors are mapped: 400 shows the backend's JSON message, 413/500 get friendly overrides.
 - Client enforces 5 MB max per file and 5M characters per pasted primer; keep that limit when touching validation.
 - Pasted primers are validated by `cleanAndValidateDNA(seq, 10)` — IUPAC ambiguity codes accepted, minimum 10 bases; alert text must stay in sync with that behavior. Primer *files* get the same validation via `validatePrimerFile`.
 - A valid pasted primer overrides a selected primer file (`pF = pF_t`) — after that, `pF` is a string, not a File. Any code touching `pF` must guard with `instanceof File` (this exact bug shipped once).
