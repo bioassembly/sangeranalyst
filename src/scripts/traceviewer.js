@@ -283,20 +283,24 @@ function createReadRenderer(canvas) {
   return { draw, setAmplitude, setRead };
 }
 
-export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOutBtn, resetBtn, ampSlider, posSlider }) {
+export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOutBtn, resetBtn, ampSlider, scrollBar }) {
   let reads = { F: null, R: null };
   let totalCols = 0;
   let view = { col: 0, colsPerPx: 1 };
+  const PX_PER_COL = 20; // scrollbar spacer scale
   const renderers = {
     F: createReadRenderer(canvasF),
     R: createReadRenderer(canvasR),
   };
 
-  function syncPosSlider() {
-    if (!posSlider) return;
-    const visible = canvasF.clientWidth * view.colsPerPx;
-    posSlider.max = String(Math.max(1, Math.round(totalCols - visible)));
-    posSlider.value = String(Math.round(view.col));
+  function syncScrollBar() {
+    if (!scrollBar) return;
+    const spacer = scrollBar.firstElementChild;
+    spacer.style.width = `${Math.max(totalCols * PX_PER_COL, scrollBar.clientWidth + 1)}px`;
+    const target = Math.round(view.col * PX_PER_COL);
+    if (Math.abs(scrollBar.scrollLeft - target) > 1) {
+      scrollBar.scrollLeft = target;
+    }
   }
 
   function fitView() {
@@ -318,7 +322,7 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
   function draw() {
     renderers.F.draw(view);
     renderers.R.draw(view);
-    syncPosSlider();
+    syncScrollBar();
   }
 
   function zoom(factor, centerRatio = 0.5) {
@@ -395,8 +399,9 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
     draw();
   });
 
-  posSlider?.addEventListener('input', () => {
-    view.col = parseFloat(posSlider.value) || 0;
+  scrollBar?.addEventListener('scroll', () => {
+    if (!reads.F && !reads.R) return;
+    view.col = scrollBar.scrollLeft / PX_PER_COL;
     clampView();
     draw();
   });
