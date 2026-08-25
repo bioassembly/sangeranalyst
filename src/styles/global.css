@@ -844,3 +844,16 @@ pre .amb{
   border:2px solid #eef0f4;
 }
 .trace-scroll::-webkit-scrollbar-thumb:hover{background:#4b5563}
+
+/* Low-similarity warning in the trace viewer */
+.trace-warn{
+  margin-top:10px;
+  padding:8px 12px;
+  background:rgba(217, 119, 6, 0.1);
+  border-left:3px solid #d97706;
+  border-radius:8px;
+  font-size:13px;
+  line-height:1.5;
+  color:#92400e;
+  font-weight:600;
+}
