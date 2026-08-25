@@ -11,7 +11,7 @@ npm run build     # build to dist/
 npm run preview   # serve dist/
 ```
 
-CI (`.github/workflows/ci.yml`) gates every push/PR on `npm run build` + `npx html-validate dist/index.html` (config: `.htmlvalidate.json`; inline styles are intentionally allowed). Run both locally before pushing.
+CI (`.github/workflows/ci.yml`) gates pushes to `main` and all PRs on `npm run build` + `npx html-validate dist/index.html` (config: `.htmlvalidate.json`; inline styles are intentionally allowed). Run both locally before pushing — note `html-validate` is not a devDependency, so `npx` downloads it on first run.
 
 ## Deploy — GitHub Pages via Actions
 
@@ -33,7 +33,7 @@ Response JSON: `data.outputs.consensus_strict`, `data.outputs.consensus_full`, o
 ## Coupling points & gotchas
 
 - Element IDs are the coupling point between `index.astro` and `app.js` (`fileF`, `fileR`, `mottCutoff`, `qPhred`, `secPeak`, `primerF-file`/`primerF-text`, `primerR-*`, result `<pre>`s `strict`/`full`/`primerTrim`, `loadDemoBtn`). Renaming one side breaks the other silently.
-- Client enforces 5 MB max per input; keep that limit when touching validation.
+- Client enforces 5 MB max per file and 5M characters per pasted primer; keep that limit when touching validation.
 - Pasted primers are validated by `cleanAndValidateDNA(seq, 10)` — IUPAC ambiguity codes accepted, minimum 10 bases; alert text must stay in sync with that behavior. Primer *files* get the same validation via `validatePrimerFile`.
 - A valid pasted primer overrides a selected primer file (`pF = pF_t`) — after that, `pF` is a string, not a File. Any code touching `pF` must guard with `instanceof File` (this exact bug shipped once).
 - "Try demo data" button fetches from `public/demo/` using the base path — keep those files in sync if demo assets move.
