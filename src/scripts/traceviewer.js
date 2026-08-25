@@ -399,7 +399,6 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
       }
       if (both > 0) {
         stats = { shared: both, identity: match / both };
-        parts.push(`overlap ${both} bases · ${Math.round(stats.identity * 100)}% identity`);
       }
     }
     if (metaEl) metaEl.textContent = parts.join(' · ');
