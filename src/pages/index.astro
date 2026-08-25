@@ -120,10 +120,14 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
               <div class="trace-label" id="traceLabelR">Reverse</div>
               <div class="trace-wrap"><canvas id="traceCanvasR" height="190"></canvas></div>
             </div>
-            <div class="trace-amp-row">
-              <span class="small">Peak height</span>
-              <input type="range" id="traceAmp" min="0.5" max="4" step="0.1" value="1" aria-label="Peak height" />
+            <div class="trace-pos-row">
+              <span class="small">Position</span>
+              <input type="range" id="tracePos" min="0" max="100" value="0" step="1" aria-label="Trace position" />
             </div>
+          </div>
+          <div class="trace-amp">
+            <input type="range" id="traceAmp" min="0.5" max="4" step="0.1" value="1" aria-label="Peak height" />
+            <span class="small">Peak<br/>height</span>
           </div>
         </div>
         <div class="small trace-meta">

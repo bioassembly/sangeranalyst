@@ -169,6 +169,7 @@ const traceViewer = attachTraceViewer({
   zoomOutBtn: document.getElementById('traceZoomOut'),
   resetBtn: document.getElementById('traceReset'),
   ampSlider: document.getElementById('traceAmp'),
+  posSlider: document.getElementById('tracePos'),
 });
 
 const traceFiles = { F: null, R: null };
