@@ -103,18 +103,28 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
 
       <div class="trace-section" id="traceSection" style="display:none">
         <div class="trace-head">
-          <div class="trace-tabs" role="tablist" aria-label="Chromatogram trace">
-            <button class="trace-tab active" id="traceTabF" data-trace="F" type="button" role="tab" aria-selected="true">Forward</button>
-            <button class="trace-tab" id="traceTabR" data-trace="R" type="button" role="tab" aria-selected="false">Reverse</button>
-          </div>
+          <div class="trace-title">Chromatogram preview</div>
           <div class="trace-controls">
             <button class="trace-btn" id="traceZoomOut" type="button" aria-label="Zoom out">−</button>
             <button class="trace-btn" id="traceZoomIn" type="button" aria-label="Zoom in">+</button>
             <button class="trace-btn" id="traceReset" type="button" aria-label="Reset view">Reset</button>
           </div>
         </div>
-        <div class="trace-wrap">
-          <canvas id="traceCanvas" height="240"></canvas>
+        <div class="trace-body">
+          <div class="trace-stack">
+            <div class="trace-row">
+              <div class="trace-label">Forward</div>
+              <div class="trace-wrap"><canvas id="traceCanvasF" height="190"></canvas></div>
+            </div>
+            <div class="trace-row">
+              <div class="trace-label">Reverse</div>
+              <div class="trace-wrap"><canvas id="traceCanvasR" height="190"></canvas></div>
+            </div>
+          </div>
+          <div class="trace-amp">
+            <input type="range" id="traceAmp" min="0.5" max="4" step="0.1" value="1" aria-label="Peak height" />
+            <span class="small">Peak<br/>height</span>
+          </div>
         </div>
         <div class="small trace-meta">
           <span id="traceMeta"></span>
@@ -123,7 +133,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
             <span style="color:#2563eb">C</span>
             <span style="color:#111827">G</span>
             <span style="color:#dc2626">T</span>
-            · scroll to zoom, drag to pan
+            · scroll to zoom, drag to pan · bars show base quality
           </span>
         </div>
       </div>

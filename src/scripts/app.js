@@ -5,7 +5,7 @@ const BACKEND_URL = ['localhost', '127.0.0.1'].includes(window.location.hostname
   ? 'http://127.0.0.1:8000/process'
   : 'https://shiddharta.pythonanywhere.com/process';
 
-import { attachTraceViewer } from './traceviewer.js';
+import { attachTraceViewer, parseABIF } from './traceviewer.js';
 
 const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mldawblv';
 
@@ -160,41 +160,18 @@ function cleanAndValidateDNA(seq, minLen = 3) {
 
 const traceSection = document.getElementById('traceSection');
 const traceMeta = document.getElementById('traceMeta');
-const traceError = { F: null, R: null };
 
 const traceViewer = attachTraceViewer({
-  canvas: document.getElementById('traceCanvas'),
+  canvasF: document.getElementById('traceCanvasF'),
+  canvasR: document.getElementById('traceCanvasR'),
   metaEl: traceMeta,
   zoomInBtn: document.getElementById('traceZoomIn'),
   zoomOutBtn: document.getElementById('traceZoomOut'),
   resetBtn: document.getElementById('traceReset'),
+  ampSlider: document.getElementById('traceAmp'),
 });
 
 const traceFiles = { F: null, R: null };
-let activeTrace = 'F';
-
-document.querySelectorAll('.trace-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    activeTrace = tab.dataset.trace;
-    document.querySelectorAll('.trace-tab').forEach(t => {
-      const on = t.dataset.trace === activeTrace;
-      t.classList.toggle('active', on);
-      t.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
-    showActiveTrace();
-  });
-});
-
-function showActiveTrace() {
-  const file = traceFiles[activeTrace];
-  if (!file) return;
-  if (file instanceof File) {
-    traceViewer.load(file, file.name).catch(err => {
-      console.error(err);
-      traceMeta.textContent = `Could not display "${file.name}" — not a valid ABIF chromatogram.`;
-    });
-  }
-}
 
 function setInlineError(inputId, msg) {
   let el = document.getElementById(inputId + 'Err');
@@ -212,12 +189,36 @@ function setInlineError(inputId, msg) {
   el.textContent = msg;
 }
 
+async function refreshTraces() {
+  const f = traceFiles.F, r = traceFiles.R;
+  if (!f && !r) {
+    traceSection.style.display = 'none';
+    return;
+  }
+  traceSection.style.display = 'block';
+
+  let fwd = null, rev = null;
+  const notes = [];
+  if (f) {
+    try { fwd = await parseABIF(await f.arrayBuffer()); }
+    catch { notes.push(`"${f.name}" is not a valid ABIF chromatogram`); }
+  }
+  if (r) {
+    try { rev = await parseABIF(await r.arrayBuffer()); }
+    catch { notes.push(`"${r.name}" is not a valid ABIF chromatogram`); }
+  }
+  traceViewer.setData(fwd, rev, f?.name ?? '', r?.name ?? '');
+  if (notes.length) {
+    traceMeta.textContent = (traceMeta.textContent ? traceMeta.textContent + ' · ' : '') + notes.join(' · ');
+  }
+}
+
 async function handleReadSelected(inputId, which) {
   const file = document.getElementById(inputId).files[0];
   traceFiles[which] = file || null;
   setInlineError(inputId, null);
   if (!file) {
-    refreshTraceSection();
+    refreshTraces();
     return;
   }
   if (file.size > 5_000_000) {
@@ -229,26 +230,7 @@ async function handleReadSelected(inputId, which) {
       setInlineError(inputId, 'This does not look like an ABIF chromatogram (missing ABIF signature).');
     }
   }
-  refreshTraceSection();
-  if (activeTrace === which) showActiveTrace();
-}
-
-function refreshTraceSection() {
-  const any = traceFiles.F || traceFiles.R;
-  traceSection.style.display = any ? 'block' : 'none';
-  if (!any) return;
-  if (!traceFiles[activeTrace]) {
-    const other = activeTrace === 'F' ? 'R' : 'F';
-    if (traceFiles[other]) {
-      activeTrace = other;
-      document.querySelectorAll('.trace-tab').forEach(t => {
-        const on = t.dataset.trace === activeTrace;
-        t.classList.toggle('active', on);
-        t.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-    }
-  }
-  showActiveTrace();
+  refreshTraces();
 }
 
 document.getElementById('fileF').addEventListener('change', () => handleReadSelected('fileF', 'F'));
