@@ -1,4 +1,4 @@
-<h1 align="center"><img src="assets/favicon.ico" width="32" height="32" /> SangerAnalyst — A Free, Web-Based Sanger Sequencing Analysis Tool</h1>
+<h1 align="center"><img src="public/assets/favicon.ico" width="32" height="32" /> SangerAnalyst — A Free, Web-Based Sanger Sequencing Analysis Tool</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/100%25-Free-FFD60A?style=for-the-badge" />
@@ -64,9 +64,9 @@ Defaults work well for most datasets (Mott `0.1`, min Phred `20`, secondary peak
 - **Minimum Base Phred Quality** — Bases below this threshold are replaced with **`N`**.
 - **Secondary peak threshold (%)** — Controls the sensitivity for detecting mixed bases (heterozygotes).
 
-  <img src="assets/secondary_peak-min.png" width="96" height="96"/>
+  <img src="public/assets/secondary_peak-min.png" width="96" height="96"/>
 ### **4. Run `Analyze`**  
-The backend processes each request in ~0.4 seconds. Successful (high-confidence) uploads are deleted immediately after processing; only **low-confidence** inputs (empty strict consensus or >5% `N`) are retained server-side for troubleshooting/algorithm improvement and auto-deleted after **3 days**.
+The backend processes each request in ~0.4 seconds, uploaded data is deleted immediately after processing.
 
 ### **5. Inspect Results**
 Preview the chromatogram traces first (zoom/pan, quality bars, low-identity warning), then review the outputs below — each with Copy/Download buttons.
