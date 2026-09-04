@@ -17,6 +17,18 @@ https://bioassembly.github.io/sangeranalyst
 
 ---
 
+## ✨ Features
+
+- **Chromatogram viewer** — stacked forward/reverse peak traces parsed client-side from your `.ab1` files, with zoom, pan/scrollbar, peak-height control, per-base quality bars, and a low-identity warning when reads may not share a template.
+- **Quality-weighted consensus** — Mott trimming, automatic orientation detection, statistically validated overlap, PolyPhred-style heterozygote calling (IUPAC codes), and conflict/secondary-peak reports embedded in each output.
+- **Primer handling** — upload FASTA (`.fasta`/`.fa`/`.txt`) or paste sequence text (IUPAC accepted, min 10 bases); pasted sequence overrides the file.
+- **One-click outputs** — High-Confidence Consensus, Full Merge, and conditional Primer-Trimmed Consensus, each with Copy and Download (`.txt`) buttons; IUPAC ambiguity bases highlighted.
+- **Demo dataset** — **Try demo data** button loads the bundled control files instantly.
+- **Remembered settings** — Mott cutoff, min Phred, and secondary-peak threshold persist in your browser (localStorage).
+- **Mobile-friendly** — responsive layout, FAQ accordion, tooltips, and inline validation (5 MB per `.ab1`, ABIF signature check).
+
+---
+
 ## 📂 Demo Dataset
 
 A publicly available control dataset is provided for users to test the tool without uploading their own files.
@@ -47,16 +59,18 @@ Prepare the following files:
 - Primers (optional; can be uploaded or typed)
 
 ### **3. Adjust Processing Settings (Optional)**  
-Defaults work well for most datasets.  
+Defaults work well for most datasets (Mott `0.1`, min Phred `20`, secondary peak `33%`).  
 - **Mott Trim Cutoff** — Controls how aggressively low-quality regions are removed before alignment.  
 - **Minimum Base Phred Quality** — Bases below this threshold are replaced with **`N`**.
 - **Secondary peak threshold (%)** — Controls the sensitivity for detecting mixed bases (heterozygotes).
 
   <img src="assets/secondary_peak-min.png" width="96" height="96"/>
 ### **4. Run `Analyze`**  
-The backend processes each request in ~0.4 seconds, uploaded data is deleted immediately after processing.
+The backend processes each request in ~0.4 seconds. Successful (high-confidence) uploads are deleted immediately after processing; only **low-confidence** inputs (empty strict consensus or >5% `N`) are retained server-side for troubleshooting/algorithm improvement and auto-deleted after **3 days**.
 
 ### **5. Inspect Results**
+Preview the chromatogram traces first (zoom/pan, quality bars, low-identity warning), then review the outputs below — each with Copy/Download buttons.
+
 You will receive 2 outputs (3 if primer included):
 
 #### 🔹 High-Confidence Consensus  
@@ -74,11 +88,10 @@ This provides the longest methodologically reliable sequence, though meaning it'
 
 ## 🛠️ Roadmap (To-Do Next)
 
-- 📱 **Mobile UI improvements** — better layout, larger buttons, smoother long-sequence handling.  
-- 📈 **Chromatogram viewer** — interactive peak traces for conflict inspection.  
 - 🧬 **Gene annotations** — automatic ORF detection.  
 - 🧭 **Reference mapping** — align consensus to a reference and highlight differences.  
 - 📦 **Batch processing** — analyze multiple samples at once.
+- 📈 **Viewer enhancements** — deeper conflict-to-trace linking on top of the shipped chromatogram viewer.
 
 ---
 
