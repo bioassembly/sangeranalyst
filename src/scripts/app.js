@@ -347,6 +347,7 @@ analyzeBtn.addEventListener('click', async () => {
   fullEl.scrollTop  = 0;
   primerBlock.style.display = 'none';
   resultsBox.style.display = 'none';
+  document.getElementById('server-warn')?.remove();
   primerEl.textContent = '—';
   strictEl.textContent = '—';
   fullEl.textContent = '—';
@@ -380,6 +381,17 @@ analyzeBtn.addEventListener('click', async () => {
     }
     const data = await resp.json();
     const outputs = data.outputs;
+
+    // Server-side warnings (e.g. reads with no quality scores) as a
+    // banner above the results; textContent keeps it copy-safe.
+    if (Array.isArray(data.warnings) && data.warnings.length) {
+      const banner = document.createElement('div');
+      banner.id = 'server-warn';
+      banner.className = 'server-warn';
+      banner.setAttribute('role', 'alert');
+      banner.textContent = data.warnings.join(' ');
+      resultsBox.prepend(banner);
+    }
 
     renderSeq(strictEl, outputs.consensus_strict || '—');
     renderSeq(fullEl, outputs.consensus_full || '—');

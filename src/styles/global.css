@@ -857,3 +857,16 @@ pre .amb{
   color:#92400e;
   font-weight:600;
 }
+
+/* Server-side analysis warnings (e.g. zero-quality reads) above results */
+.server-warn{
+  margin-bottom:10px;
+  padding:8px 12px;
+  background:rgba(217, 119, 6, 0.1);
+  border-left:3px solid #d97706;
+  border-radius:8px;
+  font-size:13px;
+  line-height:1.5;
+  color:#92400e;
+  font-weight:600;
+}

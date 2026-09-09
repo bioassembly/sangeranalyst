@@ -28,7 +28,7 @@ CI (`.github/workflows/ci.yml`) gates pushes to `main` and all PRs on `npm run b
 ## API contract (frontend ↔ backend)
 
 POST multipart FormData with fields: `fileF`, `fileR` (.ab1), optional `primerF`/`primerR` (uploaded file or pasted sequence), `mottCutoff`, `minPhred`, `secondary_peak_threshold`.
-Response JSON: `data.outputs.consensus_strict`, `data.outputs.consensus_full`, optional `data.outputs.primer_trim`.
+Response JSON: `data.outputs.consensus_strict`, `data.outputs.consensus_full`, optional `data.outputs.primer_trim`, plus `data.warnings[]` (server-side analysis warnings rendered as a `#server-warn` banner above results — textContent only, never innerHTML).
 
 ## Coupling points & gotchas
 
