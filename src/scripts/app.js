@@ -389,7 +389,7 @@ analyzeBtn.addEventListener('click', async () => {
       banner.id = 'server-warn';
       banner.className = 'server-warn';
       banner.setAttribute('role', 'alert');
-      banner.textContent = data.warnings.join(' ');
+      banner.textContent = data.warnings.join('\n');
       resultsBox.prepend(banner);
     }
 

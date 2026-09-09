@@ -869,4 +869,5 @@ pre .amb{
   line-height:1.5;
   color:#92400e;
   font-weight:600;
+  white-space:pre-line;
 }
