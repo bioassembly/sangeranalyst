@@ -13,39 +13,50 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
   <main>
     <div class="card" role="main" aria-labelledby="pageTitle">
       <div class="upload-section" id="uploadSection">
-        <div class="row">
-          <div style="flex:1">
+        <div class="ab1-row">
+          <div class="drop-slot" id="dropZoneF">
             <label for="fileF">Forward read (.ab1)</label>
             <input id="fileF" type="file" accept=".ab1" />
           </div>
 
-          <div style="flex:1">
+          <button
+            class="swap-btn"
+            id="swapReadsBtn"
+            type="button"
+            title="Swap Forward and Reverse .ab1 files"
+            aria-label="Swap Forward and Reverse reads"
+          >⇄</button>
+
+          <div class="drop-slot" id="dropZoneR">
             <label for="fileR">Reverse read (.ab1)</label>
             <input id="fileR" type="file" accept=".ab1" />
           </div>
+        </div>
+        <div class="drop-hint">
+          Tip: drag &amp; drop one or both <code>.ab1</code> files onto this card to auto-pair Forward &amp; Reverse reads.
         </div>
 
         <div class="row">
           <div style="flex:1">
             <div class="primer-header">
-              <label for="primerF-file">Forward primer (optional, .fasta)</label>
+              <label id="primerF-label" for="primerF-text">Forward primer (optional, .fasta)</label>
               <div class="primer-actions">
-                <button class="toggle-btn" data-target="F" type="button">📁</button>
-                <button class="reset-btn" data-target="F" type="button">⨉</button>
+                <button class="toggle-btn" data-target="F" type="button" title="Switch between paste sequence and upload file" aria-label="Toggle Forward primer input mode">📁</button>
+                <button class="reset-btn" data-target="F" type="button" title="Clear Forward primer" aria-label="Clear Forward primer">⨉</button>
               </div>
             </div>
-            <input id="primerF-file" type="file" accept=".fasta,.fa,.txt" style="display:none;" />
+            <input id="primerF-file" type="file" accept=".fasta,.fa,.fna,.txt" style="display:none;" />
             <input id="primerF-text" class="text-primer" type="text" maxlength="100" placeholder="Enter forward primer sequence (5' → 3')" style="display:block;"/>
           </div>
           <div style="flex:1">
             <div class="primer-header">
-              <label for="primerR-file">Reverse primer (optional, .fasta)</label>
+              <label id="primerR-label" for="primerR-text">Reverse primer (optional, .fasta)</label>
               <div class="primer-actions">
-                <button class="toggle-btn" data-target="R" type="button">📁</button>
-                <button class="reset-btn" data-target="R" type="button">⨉</button>
+                <button class="toggle-btn" data-target="R" type="button" title="Switch between paste sequence and upload file" aria-label="Toggle Reverse primer input mode">📁</button>
+                <button class="reset-btn" data-target="R" type="button" title="Clear Reverse primer" aria-label="Clear Reverse primer">⨉</button>
               </div>
             </div>
-            <input id="primerR-file" type="file" accept=".fasta,.fa,.txt" style="display:none;" />
+            <input id="primerR-file" type="file" accept=".fasta,.fa,.fna,.txt" style="display:none;" />
             <input id="primerR-text" class="text-primer" type="text" maxlength="100" placeholder="Enter reverse primer sequence (5' → 3')" style="display:block;"/>
           </div>
         </div>
@@ -60,7 +71,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
               <button class="info-btn" id="mottInfoBtn" type="button" aria-label="Mott cutoff info" aria-expanded="false" aria-controls="m_tooltip">ℹ️</button>
             </div>
             <div class="small">
-              Lower values remove more low-quality bases.
+              Lower values remove more low-quality bases (shaded live on trace preview).
             </div>
           </div>
 
@@ -85,7 +96,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
             <button class="info-btn" id="secPeakInfoBtn" type="button" aria-label="Secondary peak info" aria-expanded="false" aria-controls="sec_tooltip">ℹ️</button>
           </div>
           <div class="small">
-            Secondary peaks reaching this percentage of the primary peak’s height are reported — and mark true heterozygous positions as IUPAC ambiguity codes (R, Y, …) in the consensus.
+            Secondary peaks reaching this percentage of the primary peak’s height are marked (<span style="color:#d97706">◆</span>) and call corroborated heterozygotes as IUPAC codes (R, Y, …).
           </div>
         </div>
 
@@ -103,7 +114,10 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
 
       <div class="trace-section" id="traceSection" style="display:none">
         <div class="trace-head">
-          <div class="trace-title">Chromatogram preview</div>
+          <div class="trace-title-group">
+            <div class="trace-title">Chromatogram preview</div>
+            <span id="traceFocusPill" class="trace-focus-pill" style="display:none"></span>
+          </div>
           <div class="trace-controls">
             <button class="trace-btn" id="traceZoomOut" type="button" aria-label="Zoom out">−</button>
             <button class="trace-btn" id="traceZoomIn" type="button" aria-label="Zoom in">+</button>
@@ -137,34 +151,60 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
             <span style="color:#2563eb">C</span>
             <span style="color:#111827">G</span>
             <span style="color:#dc2626">T</span>
-            · scroll to zoom, drag to pan · bars show base quality
+            · <span style="color:#d97706">◆</span> 2° peak · shaded = Mott trim · scroll to zoom, drag to pan
           </span>
         </div>
       </div>
 
       <div class="result-section" id="results" aria-live="polite" style="display:none">
+        <div class="summary-card" id="summaryCard" style="display:none">
+          <div class="summary-head">
+            <div class="summary-title">Assembly Summary &amp; Inspector</div>
+            <div class="summary-actions">
+              <button class="result-btn" id="blastConsensusBtn" type="button" title="Search primary consensus sequence on NCBI BLASTn">
+                NCBI BLASTn ↗
+              </button>
+            </div>
+          </div>
+          <div class="summary-grid" id="summaryMetrics"></div>
+
+          <div class="orf-strip" id="orfStrip" style="display:none">
+            <div class="orf-info">
+              <span class="orf-badge" id="orfMeta"></span>
+              <code class="orf-seq" id="orfSeqPreview"></code>
+            </div>
+            <button class="result-btn" id="copyOrfBtn" type="button">Copy Protein FASTA</button>
+          </div>
+
+          <div class="inspector-strip" id="inspectorStrip"></div>
+        </div>
+
         <div class="result-block">
           <div class="result-title">High Confidence Consensus</div>
           <div class="result-controls">
-          <button class="result-btn copy-btn" data-target="strict" type="button">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
-              viewBox="0 0 24 24">
-              <rect x="9" y="9" width="13" height="13" rx="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            Copy
-          </button>
-          <button class="result-btn download-btn" data-target="strict" type="button">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
-              viewBox="0 0 24 24">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <path d="M7 10l5 5 5-5"/>
-              <path d="M12 15V3"/>
-            </svg>
-            Download
-          </button>
-        </div>
-          <pre id="strict">-</pre>
+            <button class="result-btn result-btn-primary copy-fasta-btn" data-target="strict" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              Copy FASTA
+            </button>
+            <button class="result-btn result-btn-primary download-fasta-btn" data-target="strict" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M7 10l5 5 5-5"/>
+                <path d="M12 15V3"/>
+              </svg>
+              Download .fasta
+            </button>
+            <button class="result-btn copy-btn" data-target="strict" type="button">
+              Copy Report
+            </button>
+            <button class="result-btn download-btn" data-target="strict" type="button">
+              Download Report (.txt)
+            </button>
+          </div>
+          <pre id="strict">—</pre>
         </div>
 
         <div class="result-block">
@@ -173,55 +213,63 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
             Best for longer amplicons — with ~900 bp forward/reverse reads on a ~1,500 bp template, only ~300 bp overlaps. This output spans the full length; bases outside the overlap come from a single read.
           </div>
           <div class="result-controls">
-          <button class="result-btn copy-btn" data-target="full" type="button">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
-              viewBox="0 0 24 24">
-              <rect x="9" y="9" width="13" height="13" rx="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            Copy
-          </button>
-          <button class="result-btn download-btn" data-target="full" type="button">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
-              viewBox="0 0 24 24">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <path d="M7 10l5 5 5-5"/>
-              <path d="M12 15V3"/>
-            </svg>
-            Download
-          </button>
-        </div>
-          <pre id="full">-</pre>
+            <button class="result-btn result-btn-primary copy-fasta-btn" data-target="full" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              Copy FASTA
+            </button>
+            <button class="result-btn result-btn-primary download-fasta-btn" data-target="full" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M7 10l5 5 5-5"/>
+                <path d="M12 15V3"/>
+              </svg>
+              Download .fasta
+            </button>
+            <button class="result-btn copy-btn" data-target="full" type="button">
+              Copy Report
+            </button>
+            <button class="result-btn download-btn" data-target="full" type="button">
+              Download Report (.txt)
+            </button>
+          </div>
+          <pre id="full">—</pre>
         </div>
 
         <div id="primerResultBlock" class="result-block" style="display:none">
           <div class="result-title">Primer Trimmed Consensus</div>
           <div class="result-controls">
-          <button class="result-btn copy-btn" data-target="primerTrim" type="button">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
-              viewBox="0 0 24 24">
-              <rect x="9" y="9" width="13" height="13" rx="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            Copy
-          </button>
-          <button class="result-btn download-btn" data-target="primerTrim" type="button">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor"
-              viewBox="0 0 24 24">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <path d="M7 10l5 5 5-5"/>
-              <path d="M12 15V3"/>
-            </svg>
-            Download
-          </button>
-        </div>
-          <pre id="primerTrim">-</pre>
+            <button class="result-btn result-btn-primary copy-fasta-btn" data-target="primerTrim" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              Copy FASTA
+            </button>
+            <button class="result-btn result-btn-primary download-fasta-btn" data-target="primerTrim" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M7 10l5 5 5-5"/>
+                <path d="M12 15V3"/>
+              </svg>
+              Download .fasta
+            </button>
+            <button class="result-btn copy-btn" data-target="primerTrim" type="button">
+              Copy Report
+            </button>
+            <button class="result-btn download-btn" data-target="primerTrim" type="button">
+              Download Report (.txt)
+            </button>
+          </div>
+          <pre id="primerTrim">—</pre>
         </div>
       </div>
     </div>
 
     <div class="how">
-      <h3>How Does It Works?</h3>
+      <h3>How Does It Work?</h3>
       <p class="small" style="margin-top:8px">
         SangerAnalyst trims low-quality regions with Mott's algorithm, verifies the forward–reverse overlap is statistically real, aligns the reads and builds a quality-weighted consensus — sequencing errors are corrected from the higher-quality strand, while true heterozygous positions (confirmed by secondary peaks) are kept as IUPAC ambiguity codes. Primer &amp; off-target regions are then trimmed away for a clean final report. <br/><br/> Powered by Biopython — trusted library for sequence processing and alignment.
       </p>
@@ -236,7 +284,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
             <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
           </summary>
           <div class="faq-answer">
-            <p>Applied Biosystems <code>.ab1</code> chromatogram files for the forward and reverse reads. Primers are optional — upload them as FASTA (<code>.fasta</code>, <code>.fa</code>, <code>.txt</code>) or paste the sequence directly.</p>
+            <p>Applied Biosystems <code>.ab1</code> chromatogram files for the forward and reverse reads. Primers are optional — upload them as FASTA (<code>.fasta</code>, <code>.fa</code>, <code>.fna</code>, <code>.txt</code>) or paste the sequence directly.</p>
           </div>
         </details>
         <details class="faq-item">
@@ -290,7 +338,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
 
   <footer>
     <div>© 2026 SangerAnalyst | Developed by
-      <a class="linkish" href="https://www.linkedin.com/in/shiddharta-arya-anggoro-cen-8b3931317/" target="_blank">Shiddharta Arya Anggoro Cen</a>
+      <a class="linkish" href="https://www.linkedin.com/in/shiddharta-arya-anggoro-cen-8b3931317/" target="_blank" rel="noopener noreferrer">Shiddharta Arya Anggoro Cen</a>
     </div>
     <div class="footer-links">
       <a class="linkish" id="reportLink">🧬 Report Problems</a>
@@ -374,7 +422,6 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
   <div id="sentPopup" class="sent-popup" aria-hidden="true">
     <button class="x-small" id="sentClose" aria-label="Close confirmation" type="button">✕</button>
     <div class="check-wrap bounce" id="checkWrap" aria-hidden="true">
-      <!-- Blue SVG checkmark with stroke animation -->
       <svg class="check-svg" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <circle cx="26" cy="26" r="24" stroke="#e6f0ff" stroke-width="2" fill="#ffffff"/>
         <path class="path" d="M14 27 L22 34 L38 18" stroke="#007bff" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -386,19 +433,19 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
   <!-- SUPPORT MODAL -->
   <div id="supportOverlay" class="overlay" aria-hidden="true">
     <div class="backdrop" id="supportBackdrop"></div>
-    <div class="modal" role="dialog" aria-modal="true" id="supportModalBox">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="supportModalTitle" id="supportModalBox">
       <button class="close" id="supportClose" aria-label="Close" type="button">✕</button>
-      <h3>Support Links</h3>
+      <h3 id="supportModalTitle">Support Links</h3>
       <p class="small" style="margin-bottom:16px;">
         Your contribution keeps the server running and funds new features.
       </p>
       <div class="support-options">
-        <a href="https://paypal.me/bioassembly" target="_blank" class="support-item">
+        <a href="https://paypal.me/bioassembly" target="_blank" rel="noopener noreferrer" class="support-item">
           <div class="support-icon paypal-icon"><img src={`${b}/assets/support/paypal.png`} alt="PayPal" /></div>
           <span>PayPal</span>
         </a>
 
-        <a href="https://ko-fi.com/shiddhartaa" target="_blank" class="support-item">
+        <a href="https://ko-fi.com/shiddhartaa" target="_blank" rel="noopener noreferrer" class="support-item">
           <div class="support-icon kofi-icon"><img src={`${b}/assets/support/ko-fi.png`} alt="Ko-fi" /></div>
           <span>Ko-fi</span>
         </a>
@@ -408,7 +455,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
           <span>DANA</span>
         </a>
 
-        <a href="https://liberapay.com/shiddharta/donate" target="_blank" class="support-item">
+        <a href="https://liberapay.com/shiddharta/donate" target="_blank" rel="noopener noreferrer" class="support-item">
           <div class="support-icon lp-icon">💛</div>
           <span>Liberapay</span>
         </a>
@@ -419,9 +466,9 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
   <!-- DANA QR MODAL -->
   <div id="danaOverlay" class="overlay" aria-hidden="true">
     <div class="backdrop" id="danaBackdrop"></div>
-    <div class="modal" role="dialog" aria-modal="true" id="danaModalBox">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="danaModalTitle" id="danaModalBox">
       <button class="close" id="danaClose" aria-label="Close" type="button">✕</button>
-      <h3>DANA QR</h3>
+      <h3 id="danaModalTitle">DANA QR</h3>
       <div class="small" style="margin-bottom:18px;">
         Scan this QR with your DANA app.
       </div>

@@ -1,16 +1,32 @@
 // Client-side ABIF parser + Benchling-style stacked chromatogram viewer.
-// Forward and reverse traces are reverse-complemented and aligned
-// (Needleman-Wunsch) so both render in a shared column space, with a
-// per-base quality strip on top and an amplitude slider, mirroring the
+// Forward and reverse traces are oriented and aligned (semi-global
+// Needleman-Wunsch) so both render in a shared column space, with per-base
+// Phred quality bars, live Mott trim shading, secondary-peak markers,
+// click-to-jump column highlighting, and an amplitude slider — mirroring the
 // tags the backend pipeline reads (DATA9-12, PLOC2, PBAS2, FWO_1, PCON2).
 
 const CHANNEL_COLORS = { A: '#16a34a', C: '#2563eb', G: '#111827', T: '#dc2626' };
 const QUAL_COLORS = { good: '#16a34a', mid: '#eab308', bad: '#dc2626' };
+const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
 const MAX_ALIGN_CELLS = 4_000_000;
 
+export function revcomp(s) {
+  let out = '';
+  for (let i = s.length - 1; i >= 0; i--) {
+    const ch = s[i].toUpperCase();
+    out += COMPLEMENT[ch] || 'N';
+  }
+  return out;
+}
+
 export function parseABIF(buffer) {
+  if (!buffer || buffer.byteLength < 34) {
+    throw new Error('Not an ABIF file (truncated header)');
+  }
   const view = new DataView(buffer);
-  const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+  const magic = String.fromCharCode(
+    view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)
+  );
   if (magic !== 'ABIF') throw new Error('Not an ABIF file');
 
   const dirCount = view.getUint32(18);
@@ -19,10 +35,11 @@ export function parseABIF(buffer) {
   const entries = new Map();
   for (let i = 0; i < dirCount; i++) {
     const p = dirOffset + i * 28;
-    if (p + 28 > buffer.byteLength) break;
+    if (p < 0 || p + 28 > buffer.byteLength) break;
     const tag = String.fromCharCode(...new Uint8Array(buffer, p, 4)).replace(/\0/g, '');
     const number = view.getUint32(p + 4);
     entries.set(tag + number, {
+      entryOffset: p,
       elemType: view.getUint16(p + 8),
       elemSize: view.getUint16(p + 10),
       numElems: view.getUint32(p + 12),
@@ -31,61 +48,216 @@ export function parseABIF(buffer) {
     });
   }
 
-  function readValues(tag, number = 1) {
+  function resolveBaseOffset(e) {
+    // ABIF spec: payloads <= 4 bytes are stored inline inside the directory
+    // entry's 4-byte dataOffset field at entryOffset + 20.
+    return e.dataSize <= 4 ? e.entryOffset + 20 : e.dataOffset;
+  }
+
+  function readText(tag, number = 1) {
     const e = entries.get(tag + number);
-    if (!e) return null;
-    const { elemType, elemSize, numElems, dataSize, dataOffset } = e;
-    const inline = dataSize <= 4;
-    const base = inline ? 24 : dataOffset;
-    const out = [];
-    let asText = (elemType === 4 || elemType === 6) && elemSize === 1;
-    if (!asText && elemSize === 1) {
-      const probe = [];
-      for (let i = 0; i < Math.min(numElems, 32); i++) probe.push(view.getUint8(base + i));
-      asText = probe.every(v => v >= 32 && v <= 126);
+    if (!e || e.elemSize !== 1 || e.numElems === 0) return null;
+    const inline = e.dataSize <= 4;
+    const base = resolveBaseOffset(e);
+    const limit = inline ? Math.min(e.numElems, 4) : e.numElems;
+    let startIdx = 0;
+    let count = limit;
+    // ABIF pString (elemType 18) prefixes length at byte 0
+    if (e.elemType === 18 && limit >= 1 && base < buffer.byteLength) {
+      const pLen = view.getUint8(base);
+      startIdx = 1;
+      count = Math.min(limit, 1 + pLen);
     }
+    const chars = [];
+    for (let i = startIdx; i < count; i++) {
+      const p = base + i;
+      if (p < 0 || p >= buffer.byteLength) break;
+      chars.push(String.fromCharCode(view.getUint8(p)));
+    }
+    return chars.join('').replace(/\0+$/, '');
+  }
+
+  function readNumbers(tag, number = 1) {
+    const e = entries.get(tag + number);
+    if (!e || e.elemSize <= 0) return null;
+    const { elemType, elemSize, numElems, dataSize } = e;
+    const inline = dataSize <= 4;
+    const base = resolveBaseOffset(e);
+    const out = [];
     for (let i = 0; i < numElems; i++) {
+      if (inline && (i + 1) * elemSize > 4) break;
       const p = base + i * elemSize;
-      if (!inline && p + elemSize > buffer.byteLength) break;
-      if (asText) {
-        out.push(String.fromCharCode(view.getUint8(p)));
-      } else if (elemType === 1 && elemSize === 4) {
+      if (p < 0 || p + elemSize > buffer.byteLength) break;
+      if (elemType === 7 && elemSize === 4) {
         out.push(view.getFloat32(p));
       } else {
         switch (elemSize) {
           case 1: out.push(view.getUint8(p)); break;
-          case 2: out.push(view.getInt16(p)); break;
-          case 4: out.push(view.getInt32(p)); break;
+          case 2: out.push(elemType === 3 ? view.getUint16(p) : view.getInt16(p)); break;
+          case 4: out.push(elemType === 5 ? view.getUint32(p) : view.getInt32(p)); break;
           default: return null;
         }
       }
     }
-    if (asText) return out.join('').replace(/\0+$/, '');
     return out;
   }
 
-  const bases = readValues('PBAS', 2) || readValues('PBAS', 1) || '';
-  const fwo = (readValues('FWO', 1) || 'GATC').replace(/[^GATC]/g, '') || 'GATC';
-  const ploc = readValues('PLOC', 2) || readValues('PLOC', 1) || [];
-  const qual = readValues('PCON', 2) || readValues('PCON', 1) || readValues('PQUAL', 2) || null;
+  const bases = (readText('PBAS', 2) || readText('PBAS', 1) || '').toUpperCase();
+  const rawFwo = (readText('FWO_', 1) || readText('FWO', 1) || 'GATC')
+    .toUpperCase()
+    .replace(/[^GATC]/g, '');
+  const fwo = (rawFwo.length >= 4 && new Set(rawFwo.slice(0, 4)).size === 4)
+    ? rawFwo.slice(0, 4)
+    : 'GATC';
 
-  const channels = {};
-  for (let i = 0; i < fwo.length; i++) {
-    const data = readValues('DATA', 9 + i);
-    if (data) channels[fwo[i]] = data;
+  const rawPloc = readNumbers('PLOC', 2) || readNumbers('PLOC', 1) || [];
+  const rawQual = readNumbers('PCON', 2) || readNumbers('PCON', 1) || readNumbers('PQU1', 1) || null;
+
+  const rawChannels = {};
+  let sampleCount = 0;
+  for (let i = 0; i < 4; i++) {
+    const data = readNumbers('DATA', 9 + i);
+    if (data && data.length > 0) {
+      rawChannels[fwo[i]] = data;
+      if (data.length > sampleCount) sampleCount = data.length;
+    }
   }
 
-  if (!bases.length || !Object.keys(channels).length) {
+  if (!bases.length || sampleCount === 0 || !Object.keys(rawChannels).length) {
     throw new Error('ABIF file is missing base-call or trace data');
   }
-  return { bases, channels, ploc, qual };
+
+  const channels = {};
+  for (const b of ['G', 'A', 'T', 'C']) {
+    channels[b] = rawChannels[b] || new Array(sampleCount).fill(0);
+  }
+
+  // Keep ploc and qual strictly aligned to bases.length so per-base lookups
+  // never index out of bounds or produce undefined column anchors.
+  const ploc = new Array(bases.length);
+  if (rawPloc.length >= bases.length) {
+    for (let i = 0; i < bases.length; i++) {
+      ploc[i] = Math.max(0, Math.min(rawPloc[i], sampleCount - 1));
+    }
+  } else if (rawPloc.length > 0) {
+    for (let i = 0; i < rawPloc.length; i++) {
+      ploc[i] = Math.max(0, Math.min(rawPloc[i], sampleCount - 1));
+    }
+    const lastSample = ploc[rawPloc.length - 1];
+    const rem = bases.length - rawPloc.length;
+    for (let k = 0; k < rem; k++) {
+      const frac = (k + 1) / (rem + 1);
+      ploc[rawPloc.length + k] = Math.round(lastSample + frac * (sampleCount - 1 - lastSample));
+    }
+  } else {
+    for (let i = 0; i < bases.length; i++) {
+      ploc[i] = Math.round(((i + 0.5) / bases.length) * (sampleCount - 1));
+    }
+  }
+
+  let qual = null;
+  if (rawQual && rawQual.length > 0) {
+    qual = new Array(bases.length);
+    for (let i = 0; i < bases.length; i++) {
+      qual[i] = i < rawQual.length ? rawQual[i] : 0;
+    }
+  }
+
+  return { bases, channels, ploc, qual, fwo };
 }
 
-const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
-function revcomp(s) {
-  let out = '';
-  for (let i = s.length - 1; i >= 0; i--) out += COMPLEMENT[s[i]] || 'N';
-  return out;
+// Kadane Mott quality trimming window [start, end) in read coordinates —
+// exact match to backend sangeranalyst.py:abi_trim.
+export function computeMottTrimWindow(qual, cutoff = 0.1) {
+  if (!qual || qual.length === 0) return [0, 0];
+  const n = qual.length;
+  if (n <= 20) return [0, n];
+  const c = Number(cutoff);
+  if (!Number.isFinite(c) || c <= 0) return [0, n];
+
+  let bestSum = 0, bestStart = 0, bestEnd = 0;
+  let cur = 0, curStart = 0;
+  for (let i = 0; i < n; i++) {
+    const s = c - Math.pow(10, qual[i] / -10.0);
+    cur += s;
+    if (cur <= 0) {
+      cur = 0;
+      curStart = i + 1;
+    } else if (cur > bestSum) {
+      bestSum = cur;
+      bestStart = curStart;
+      bestEnd = i + 1;
+    }
+  }
+  if (bestEnd - bestStart < 5) return [0, n];
+  return [bestStart, bestEnd];
+}
+
+function findLocalMaxInWindow(trace, centerIdx, radius) {
+  const start = Math.max(0, centerIdx - radius);
+  const end = Math.min(trace.length - 1, centerIdx + radius);
+  if (end - start < 2) return null;
+
+  const searchStart = Math.max(1, start);
+  const searchEnd = Math.min(trace.length - 2, end);
+  let bestVal = -1;
+  let found = false;
+
+  for (let i = searchStart; i <= searchEnd; i++) {
+    const val = trace[i];
+    const prev = trace[i - 1];
+    const next = trace[i + 1];
+    if ((val >= prev && val > next) || (val > prev && val >= next)) {
+      if (val > bestVal) {
+        bestVal = val;
+        found = true;
+      }
+    }
+  }
+  return found ? bestVal : null;
+}
+
+// Client-side secondary peak detector matching sangeranalyst.py:detect_secondary_peaks.
+export function detectTraceSecondaryPeaks(rawRead, thresholdPct = 33, complementBases = false, searchWindow = 3) {
+  if (!rawRead || !rawRead.bases || !rawRead.ploc || !rawRead.channels) return [];
+  const pct = Number(thresholdPct);
+  if (!Number.isFinite(pct) || pct <= 0) return [];
+
+  const { bases, ploc, channels } = rawRead;
+  const limit = Math.min(ploc.length, bases.length);
+  const results = [];
+
+  for (let i = 0; i < limit; i++) {
+    const centerLoc = ploc[i];
+    const primaryBase = bases[i];
+    const primaryTrace = channels[primaryBase];
+    if (!primaryTrace || centerLoc < 0 || centerLoc >= primaryTrace.length) continue;
+
+    const primarySignal = primaryTrace[centerLoc];
+    if (primarySignal < 1) continue;
+
+    let topPeak = null;
+    for (const base of ['G', 'A', 'T', 'C']) {
+      if (base === primaryBase) continue;
+      const trace = channels[base];
+      if (!trace || !trace.length) continue;
+      const peakVal = findLocalMaxInWindow(trace, centerLoc, searchWindow);
+      if (peakVal !== null) {
+        const ratio = (peakVal / primarySignal) * 100.0;
+        if (ratio >= pct && (!topPeak || ratio > topPeak.percentage)) {
+          topPeak = {
+            rawIndex: i,
+            position: i + 1,
+            primaryBase: complementBases ? (COMPLEMENT[primaryBase] || primaryBase) : primaryBase,
+            secondaryBase: complementBases ? (COMPLEMENT[base] || base) : base,
+            percentage: Math.round(ratio * 100) / 100,
+          };
+        }
+      }
+    }
+    if (topPeak) results.push(topPeak);
+  }
+  return results;
 }
 
 // Semi-global (overlap) Needleman-Wunsch: end gaps are free, so the reads
@@ -145,12 +317,32 @@ export function alignColumns(a, b) {
   return { colOfA, colOfB, totalCols };
 }
 
+function computeSharedIdentity(seqA, colOfA, seqB, colOfB) {
+  let both = 0, match = 0, i = 0, j = 0;
+  while (i < seqA.length && j < seqB.length) {
+    const ca = colOfA[i], cb = colOfB[j];
+    if (ca === cb) {
+      both++;
+      if (seqA[i] === seqB[j]) match++;
+      i++; j++;
+    } else if (ca < cb) i++;
+    else j++;
+  }
+  return { shared: both, matches: match, identity: both > 0 ? match / both : 0 };
+}
+
 // Piecewise-linear sample<->column mapping through per-base anchors.
 function makeColToSample(ploc, colOf) {
-  const anchors = ploc.map((s, i) => [colOf[i], s]);
+  if (!ploc || ploc.length === 0) return () => 0;
+  if (ploc.length === 1) {
+    const c0 = colOf[0] ?? 0;
+    const s0 = ploc[0] ?? 0;
+    return (col) => s0 + (col - c0) * 12;
+  }
+  const anchors = ploc.map((s, i) => [colOf[i] ?? i, s]);
   return function (col) {
     if (col <= anchors[0][0]) {
-      const [c0, s0] = anchors[0], [c1, s1] = anchors[1] || [c0 + 1, s0];
+      const [c0, s0] = anchors[0], [c1, s1] = anchors[1];
       return s0 + (col - c0) * (s1 - s0) / (c1 - c0 || 1);
     }
     const last = anchors.length - 1;
@@ -158,7 +350,7 @@ function makeColToSample(ploc, colOf) {
       const [c0, s0] = anchors[last - 1], [c1, s1] = anchors[last];
       return s1 + (col - c1) * (s1 - s0) / (c1 - c0 || 1);
     }
-    let lo = 0, hi = anchors.length - 1;
+    let lo = 0, hi = last;
     while (hi - lo > 1) {
       const mid = (lo + hi) >> 1;
       if (anchors[mid][0] <= col) lo = mid; else hi = mid;
@@ -168,90 +360,192 @@ function makeColToSample(ploc, colOf) {
   };
 }
 
+function computeScaleMax(channels) {
+  const pool = [];
+  for (const values of Object.values(channels)) {
+    if (!values || !values.length) continue;
+    const stride = Math.max(1, Math.floor(values.length / 4000));
+    for (let i = 0; i < values.length; i += stride) {
+      if (values[i] > 0) pool.push(values[i]);
+    }
+  }
+  pool.sort((a, b) => a - b);
+  return Math.max(pool.length ? pool[Math.floor(pool.length * 0.995)] : 1, 10);
+}
+
 function qualColor(q) {
   return q >= 40 ? QUAL_COLORS.good : q >= 20 ? QUAL_COLORS.mid : QUAL_COLORS.bad;
 }
 
 function createReadRenderer(canvas) {
-  // read: {bases, channels, ploc, qual, colOf} — colOf may be null (unaligned)
   let read = null;
   let amp = 1;
+  let colOf = null;
+  let colToSample = () => 0;
+  let sampleCount = 1;
+  let scaleMax = 10;
 
-  function setRead(r) { read = r; }
+  function setRead(r) {
+    read = r;
+    if (!r) {
+      colOf = null;
+      colToSample = () => 0;
+      sampleCount = 1;
+      scaleMax = 10;
+      return;
+    }
+    colOf = r.colOf || r.ploc.map((_, i) => i);
+    colToSample = makeColToSample(r.ploc, colOf);
+    const firstChan = r.channels.A || r.channels.C || r.channels.G || r.channels.T || [];
+    sampleCount = Math.max(1, firstChan.length);
+    scaleMax = computeScaleMax(r.channels);
+  }
+
   function setAmplitude(v) { amp = v; }
 
-  function draw(view) {
-    if (!read) return;
-    const dpr = window.devicePixelRatio || 1;
+  function draw(view, highlight = null) {
+    if (!read || !canvas) return;
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (w <= 0 || h <= 0) return;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    const colOf = read.colOf || read.ploc.map((_, i) => i);
-    const colToSample = makeColToSample(read.ploc, colOf);
-    const sampleCount = read.channels.A.length;
     const sampleAt = (col) => {
       const s = colToSample(col);
       return Math.max(0, Math.min(s, sampleCount - 1));
     };
 
-    // Robust full-trace y-scale (99.5th percentile) so spikes don't flatten
-    // everything; the amplitude slider provides the "volume" control.
-    const pool = [];
-    for (const values of Object.values(read.channels)) {
-      const stride = Math.max(1, Math.floor(values.length / 4000));
-      for (let i = 0; i < values.length; i += stride) {
-        if (values[i] > 0) pool.push(values[i]);
-      }
-    }
-    pool.sort((a, b) => a - b);
-    const scaleMax = Math.max(pool.length ? pool[Math.floor(pool.length * 0.995)] : 1, 10);
-
     const padBottom = 18;
-    const qualH = read.qual ? 20 : 0;
+    const qualH = read.qual ? 22 : 0;
     const posH = 12;
     const padTop = posH + qualH + 4;
     const plotH = h - padBottom - padTop;
     const baseline = h - padBottom;
     const spacing = 1 / view.colsPerPx;
 
-    // Position ruler (1-based), adaptive tick spacing
+    // 1. Highlighted base column (from conflict / secondary-peak click-to-jump)
+    if (highlight && Number.isFinite(highlight.col)) {
+      const hx = (highlight.col - view.col) / view.colsPerPx;
+      const bandW = Math.max(spacing, 8);
+      if (hx + bandW >= 0 && hx - bandW <= w) {
+        ctx.fillStyle = 'rgba(37, 99, 235, 0.13)';
+        ctx.fillRect(hx - bandW / 2, posH, bandW, h - posH);
+        ctx.strokeStyle = 'rgba(37, 99, 235, 0.6)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(hx - bandW / 2 + 0.5, posH + 0.5, Math.max(1, bandW - 1), h - posH - 1);
+      }
+    }
+
+    // 2. Live Mott quality-trim curtains (5' and 3' trimmed tails)
+    const trimWin = read.trimWindow;
+    if (trimWin && read.bases.length > 0) {
+      const [tStart, tEnd] = trimWin;
+      ctx.save();
+      if (tStart > 0 && tStart <= colOf.length) {
+        const boundaryCol = (tStart < colOf.length ? colOf[tStart] : colOf[colOf.length - 1] + 1) - 0.5;
+        const bx = Math.min(w, (boundaryCol - view.col) / view.colsPerPx);
+        if (bx > 0) {
+          ctx.fillStyle = 'rgba(100, 116, 139, 0.14)';
+          ctx.fillRect(0, posH, bx, h - posH);
+          if (bx <= w) {
+            ctx.strokeStyle = 'rgba(71, 85, 105, 0.65)';
+            ctx.setLineDash([4, 3]);
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(bx, posH);
+            ctx.lineTo(bx, h);
+            ctx.stroke();
+          }
+        }
+      }
+      if (tEnd < read.bases.length && tEnd >= 0) {
+        const boundaryCol = (tEnd > 0 ? colOf[tEnd - 1] : colOf[0] - 1) + 0.5;
+        const bx = Math.max(0, (boundaryCol - view.col) / view.colsPerPx);
+        if (bx < w) {
+          ctx.fillStyle = 'rgba(100, 116, 139, 0.14)';
+          ctx.fillRect(bx, posH, w - bx, h - posH);
+          if (bx >= 0) {
+            ctx.strokeStyle = 'rgba(71, 85, 105, 0.65)';
+            ctx.setLineDash([4, 3]);
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(bx, posH);
+            ctx.lineTo(bx, h);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    // 3. Position ruler (1-based: pos 1 sits at col 0, pos 10 at col 9, ...)
     const steps = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
     const step = steps.find(s => s * spacing >= 60) || 2000;
     ctx.font = '9px monospace';
     ctx.textAlign = 'center';
-    const firstTick = Math.max(1, Math.ceil(view.col / step) * step);
-    for (let k = firstTick; k < view.col + w * view.colsPerPx; k += step) {
-      const px = (k - view.col) / view.colsPerPx;
-      if (px < -20 || px > w + 20) continue;
+    const maxVisPos = Math.ceil(view.col + w * view.colsPerPx) + 1;
+    const drawTick = (pos1) => {
+      const col = pos1 - 1;
+      const px = (col - view.col) / view.colsPerPx;
+      if (px < -20 || px > w + 20) return;
       ctx.fillStyle = '#4b5563';
       ctx.fillRect(px - 0.5, 0, 1, 4);
-      ctx.fillText(String(k + 1), px, 11);
+      ctx.fillText(String(pos1), px, 11);
+    };
+    if ((step - 1) * spacing >= 28) drawTick(1);
+    const firstMult = Math.max(step, Math.ceil((view.col + 1) / step) * step);
+    for (let pos1 = firstMult; pos1 <= maxVisPos; pos1 += step) {
+      drawTick(pos1);
     }
 
-    // Quality strip: colored bar per base, numeric Q value when zoomed in
+    // 4. Quality strip: colored bar per base, Q number when zoomed in, plus
+    //    amber secondary-peak diamond markers above the bar.
     if (read.qual) {
       const showQNums = spacing >= 14;
       for (let i = 0; i < read.bases.length; i++) {
-        const col = read.colOf ? read.colOf[i] : i;
+        const col = colOf[i];
         const px = (col - view.col) / view.colsPerPx;
         if (px < -4 || px > w + 4) continue;
         const c = qualColor(read.qual[i]);
         ctx.fillStyle = c;
-        ctx.fillRect(px - 1.5, posH + 12, 3, 7);
+        ctx.fillRect(px - 1.5, posH + 13, 3, 7);
         if (showQNums) {
           ctx.font = '8px monospace';
-          ctx.fillText(String(read.qual[i]), px, posH + 9);
+          ctx.fillText(String(read.qual[i]), px, posH + 10);
         }
       }
     }
 
-    // Traces
+    if (read.secPeakByIdx && read.secPeakByIdx.size > 0) {
+      for (const [idx, sp] of read.secPeakByIdx.entries()) {
+        const col = colOf[idx];
+        const px = (col - view.col) / view.colsPerPx;
+        if (px < -8 || px > w + 8) continue;
+        const dy = posH + (read.qual ? 22 : 6);
+        ctx.fillStyle = '#d97706';
+        ctx.beginPath();
+        ctx.moveTo(px, dy - 3.5);
+        ctx.lineTo(px + 3.5, dy);
+        ctx.lineTo(px, dy + 3.5);
+        ctx.lineTo(px - 3.5, dy);
+        ctx.closePath();
+        ctx.fill();
+        if (spacing >= 18) {
+          ctx.font = '700 8px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`${sp.primaryBase}/${sp.secondaryBase}`, px, dy + 11);
+        }
+      }
+    }
+
+    // 5. Traces
     ctx.lineWidth = 1.4;
     for (const [base, values] of Object.entries(read.channels)) {
+      if (!values || !values.length) continue;
       ctx.strokeStyle = CHANNEL_COLORS[base] || '#888';
       ctx.beginPath();
       let started = false;
@@ -266,37 +560,76 @@ function createReadRenderer(canvas) {
       ctx.stroke();
     }
 
-    // Base labels, colored by base
+    // 6. Base labels, colored by base (slightly muted in Mott-trimmed tails)
     if (spacing >= 9) {
       ctx.font = '700 11px monospace';
       ctx.textAlign = 'center';
+      const [tStart, tEnd] = read.trimWindow || [0, read.bases.length];
       for (let i = 0; i < read.bases.length; i++) {
-        const col = read.colOf ? read.colOf[i] : i;
+        const col = colOf[i];
         const px = (col - view.col) / view.colsPerPx;
         if (px < -4 || px > w + 4) continue;
+        const trimmed = i < tStart || i >= tEnd;
+        ctx.globalAlpha = trimmed ? 0.42 : 1;
         ctx.fillStyle = CHANNEL_COLORS[read.bases[i]] || '#888';
         ctx.fillText(read.bases[i], px, h - 5);
       }
+      ctx.globalAlpha = 1;
     }
   }
 
   return { draw, setAmplitude, setRead };
 }
 
-export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOutBtn, resetBtn, ampSlider, scrollBar }) {
+function cloneRawRead(r) {
+  if (!r) return null;
+  return {
+    bases: r.bases,
+    channels: { ...r.channels },
+    ploc: [...r.ploc],
+    qual: r.qual ? [...r.qual] : null,
+    fwo: r.fwo,
+  };
+}
+
+export function attachTraceViewer({
+  canvasF,
+  canvasR,
+  metaEl,
+  zoomInBtn,
+  zoomOutBtn,
+  resetBtn,
+  ampSlider,
+  scrollBar,
+  onFocusChange,
+}) {
+  let rawReads = { F: null, R: null };
   let reads = { F: null, R: null };
+  let revComplemented = false;
+  let mottCutoff = 0.1;
+  let secPeakThreshold = 33;
+  let highlight = null;
   let totalCols = 0;
   let view = { col: 0, colsPerPx: 1 };
-  const PX_PER_COL = 20; // scrollbar spacer scale
+  const PX_PER_COL = 20;
+
   const renderers = {
     F: createReadRenderer(canvasF),
     R: createReadRenderer(canvasR),
   };
 
+  function activeWidth() {
+    const wf = reads.F && canvasF ? canvasF.clientWidth : 0;
+    const wr = reads.R && canvasR ? canvasR.clientWidth : 0;
+    return Math.max(wf || wr || 600, 100);
+  }
+
   function syncScrollBar() {
     if (!scrollBar) return;
     const spacer = scrollBar.firstElementChild;
-    spacer.style.width = `${Math.max(totalCols * PX_PER_COL, scrollBar.clientWidth + 1)}px`;
+    if (spacer) {
+      spacer.style.width = `${Math.max(totalCols * PX_PER_COL, scrollBar.clientWidth + 1)}px`;
+    }
     const target = Math.round(view.col * PX_PER_COL);
     if (Math.abs(scrollBar.scrollLeft - target) > 1) {
       scrollBar.scrollLeft = target;
@@ -304,103 +637,152 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
   }
 
   function fitView() {
-    // Start zoomed into the first ~40 bases (Benchling-style) instead of
-    // squashing the whole read into the canvas.
     const initialCols = Math.min(40, Math.max(totalCols, 1));
-    view.colsPerPx = initialCols / canvasF.clientWidth;
+    view.colsPerPx = initialCols / activeWidth();
     view.col = 0;
+    clampView();
   }
 
   function clampView() {
-    const w = canvasF.clientWidth;
-    const maxColsPerPx = Math.max(totalCols / w, 0.02);
-    view.colsPerPx = Math.min(view.colsPerPx, maxColsPerPx);
+    const w = activeWidth();
+    const minColsPerPx = 0.02; // max ~50 px per base zoom-in
+    const maxColsPerPx = Math.max(totalCols / w, minColsPerPx);
+    view.colsPerPx = Math.min(Math.max(view.colsPerPx, minColsPerPx), maxColsPerPx);
     const visible = w * view.colsPerPx;
-    view.col = Math.max(0, Math.min(view.col, totalCols - visible));
+    view.col = Math.max(0, Math.min(view.col, Math.max(0, totalCols - visible)));
   }
 
   function draw() {
-    renderers.F.draw(view);
-    renderers.R.draw(view);
+    renderers.F.draw(view, highlight);
+    renderers.R.draw(view, highlight);
     syncScrollBar();
   }
 
+  function recomputeAnnotations() {
+    if (reads.F && rawReads.F) {
+      reads.F.trimWindow = rawReads.F.qual
+        ? computeMottTrimWindow(rawReads.F.qual, mottCutoff)
+        : [0, reads.F.bases.length];
+      const spF = detectTraceSecondaryPeaks(rawReads.F, secPeakThreshold, false);
+      reads.F.secPeakByIdx = new Map(spF.map(p => [p.rawIndex, p]));
+    }
+    if (reads.R && rawReads.R) {
+      const L = rawReads.R.bases.length;
+      if (rawReads.R.qual) {
+        const [rs, re] = computeMottTrimWindow(rawReads.R.qual, mottCutoff);
+        reads.R.trimWindow = revComplemented ? [L - re, L - rs] : [rs, re];
+      } else {
+        reads.R.trimWindow = [0, L];
+      }
+      const spR = detectTraceSecondaryPeaks(rawReads.R, secPeakThreshold, revComplemented);
+      reads.R.secPeakByIdx = new Map(
+        spR.map(p => [revComplemented ? (L - 1 - p.rawIndex) : p.rawIndex, p])
+      );
+    }
+  }
+
   function zoom(factor, centerRatio = 0.5) {
-    const w = canvasF.clientWidth;
+    const w = activeWidth();
+    const ratio = Number.isFinite(centerRatio) ? Math.min(Math.max(centerRatio, 0), 1) : 0.5;
     const visibleBefore = w * view.colsPerPx;
-    const center = view.col + centerRatio * visibleBefore;
+    const center = view.col + ratio * visibleBefore;
     view.colsPerPx /= factor;
     clampView();
     const visibleAfter = w * view.colsPerPx;
-    view.col = Math.max(0, center - centerRatio * visibleAfter);
+    view.col = Math.max(0, center - ratio * visibleAfter);
     clampView();
     draw();
   }
 
-  function setData(fwd, rev, nameF, nameR) {
-    reads.F = fwd; reads.R = rev;
-    renderers.F.setRead(fwd);
-    renderers.R.setRead(rev);
-    const parts = [];
+  function setHighlight(next) {
+    highlight = next;
+    onFocusChange?.(highlight);
+  }
 
-    let rcBases = null;
+  function setData(fwdInput, revInput, nameF, nameR) {
+    rawReads = { F: cloneRawRead(fwdInput), R: cloneRawRead(revInput) };
+    const fwd = cloneRawRead(fwdInput);
+    const rev = cloneRawRead(revInput);
+    reads = { F: fwd, R: rev };
+    revComplemented = false;
+    setHighlight(null);
+
+    const parts = [];
+    let stats = null;
+
     if (fwd && rev) {
-      rcBases = revcomp(rev.bases);
-      const aln = alignColumns(fwd.bases, rcBases);
-      if (aln) {
-        fwd.colOf = aln.colOfA;
-        rev.colOf = aln.colOfB;
-        // Reverse read is rendered reverse-complemented: flip its base-indexed
-        // arrays so base j of the revcomp maps to its original peak sample,
-        // and complement-swap the channels (sample order is untouched — base
-        // j's peak lives at the ORIGINAL sample of the base it came from,
-        // but under the complement base's channel color).
-        const comp = { A: 'T', T: 'A', G: 'C', C: 'G' };
-        const swapped = {};
-        for (const b of Object.keys(rev.channels)) {
-          swapped[b] = rev.channels[comp[b]] || rev.channels[b];
+      const rcBases = revcomp(rev.bases);
+      const alnRc = alignColumns(fwd.bases, rcBases);
+      const alnRaw = alignColumns(fwd.bases, rev.bases);
+
+      if (alnRc) {
+        const statsRc = computeSharedIdentity(fwd.bases, alnRc.colOfA, rcBases, alnRc.colOfB);
+        const statsRaw = alnRaw
+          ? computeSharedIdentity(fwd.bases, alnRaw.colOfA, rev.bases, alnRaw.colOfB)
+          : { shared: 0, matches: -1, identity: 0 };
+
+        // Mirror backend detect_best_orientation: prefer standard revcomp unless
+        // the uploaded reverse read already aligns substantially better raw.
+        const useRaw = alnRaw && statsRaw.matches > statsRc.matches && statsRaw.identity >= 0.65;
+        if (useRaw) {
+          fwd.colOf = alnRaw.colOfA;
+          rev.colOf = alnRaw.colOfB;
+          totalCols = alnRaw.totalCols;
+          revComplemented = false;
+          stats = { shared: statsRaw.shared, identity: statsRaw.identity, revComplemented: false, orientation: 'raw' };
+          parts.push('traces aligned (reverse already in forward orientation)');
+        } else {
+          fwd.colOf = alnRc.colOfA;
+          rev.colOf = alnRc.colOfB;
+          const swapped = {};
+          for (const b of Object.keys(rev.channels)) {
+            swapped[b] = rev.channels[COMPLEMENT[b]] || rev.channels[b];
+          }
+          rev.channels = swapped;
+          rev.bases = rcBases;
+          rev.ploc = [...rev.ploc].reverse();
+          if (rev.qual) rev.qual = [...rev.qual].reverse();
+          totalCols = alnRc.totalCols;
+          revComplemented = true;
+          stats = { shared: statsRc.shared, identity: statsRc.identity, revComplemented: true, orientation: 'revcomp' };
+          parts.push('traces aligned');
         }
-        rev.channels = swapped;
-        rev.bases = rcBases;
-        rev.ploc = [...rev.ploc].reverse();
-        if (rev.qual) rev.qual = [...rev.qual].reverse();
-        totalCols = aln.totalCols;
-        parts.push('traces aligned');
       } else {
-        fwd.colOf = null; rev.colOf = null;
+        fwd.colOf = null;
+        rev.colOf = null;
         totalCols = Math.max(fwd.bases.length, rev.bases.length);
+        stats = { shared: 0, identity: null, revComplemented: false, orientation: 'unaligned' };
         parts.push('too long to align — shown from each read start');
       }
-    } else {
+    } else if (fwd || rev) {
       const only = fwd || rev;
       only.colOf = null;
       totalCols = only.bases.length;
+      stats = { shared: 0, identity: null, revComplemented: false, orientation: 'single' };
+    } else {
+      totalCols = 0;
     }
 
-    if (reads.F) { canvasF.style.display = ''; canvasF.parentElement.style.display = ''; }
-    else { canvasF.style.display = 'none'; canvasF.parentElement.style.display = 'none'; }
-    if (reads.R) { canvasR.style.display = ''; canvasR.parentElement.style.display = ''; }
-    else { canvasR.style.display = 'none'; canvasR.parentElement.style.display = 'none'; }
+    // Update DOM display BEFORE fitView() so activeWidth() reads real layout width
+    if (canvasF) {
+      canvasF.style.display = reads.F ? '' : 'none';
+      if (canvasF.parentElement?.parentElement) {
+        canvasF.parentElement.parentElement.style.display = reads.F ? '' : 'none';
+      }
+    }
+    if (canvasR) {
+      canvasR.style.display = reads.R ? '' : 'none';
+      if (canvasR.parentElement?.parentElement) {
+        canvasR.parentElement.parentElement.style.display = reads.R ? '' : 'none';
+      }
+    }
+
+    recomputeAnnotations();
+    renderers.F.setRead(fwd);
+    renderers.R.setRead(rev);
 
     if (fwd) parts.unshift(`${nameF} (${fwd.bases.length} bases)`);
     if (rev) parts.splice(fwd ? 1 : 0, 0, `${nameR} (${rev.bases.length} bases)`);
-
-    let stats = null;
-    if (fwd && rev && fwd.colOf && rcBases) {
-      let both = 0, match = 0, i = 0, j = 0;
-      while (i < fwd.bases.length && j < rcBases.length) {
-        const ca = fwd.colOf[i], cb = rev.colOf[j];
-        if (ca === cb) {
-          both++;
-          if (fwd.bases[i] === rcBases[j]) match++;
-          i++; j++;
-        } else if (ca < cb) i++;
-        else j++;
-      }
-      if (both > 0) {
-        stats = { shared: both, identity: match / both };
-      }
-    }
     if (metaEl) metaEl.textContent = parts.join(' · ');
 
     fitView();
@@ -408,9 +790,62 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
     return stats;
   }
 
+  function parsePosHint(posVal) {
+    if (typeof posVal === 'number' && Number.isFinite(posVal)) return Math.round(posVal);
+    if (typeof posVal === 'string') {
+      const trimmed = posVal.trim();
+      if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+      const m = trimmed.match(/inbetween\s+(\d+)-(\d+)/i);
+      if (m) return parseInt(m[1], 10);
+    }
+    return null;
+  }
+
+  // Jump to a base using raw 1-based read coordinates (F_ab1pos on forward,
+  // or oriented R_ab1pos on reverse) mapped through colOf to the shared canvas
+  // column — never consensus coordinates directly.
+  function focusBase({ fPos = null, rPos = null, col = null, label = '' } = {}) {
+    if (!reads.F && !reads.R) return false;
+    let targetCol = Number.isFinite(col) ? col : null;
+
+    if (targetCol === null) {
+      const fIntExact = typeof fPos === 'number' || (typeof fPos === 'string' && /^\d+$/.test(fPos.trim()));
+      const rIntExact = typeof rPos === 'number' || (typeof rPos === 'string' && /^\d+$/.test(rPos.trim()));
+      const fp = parsePosHint(fPos);
+      const rp = parsePosHint(rPos);
+
+      if (fIntExact && fp !== null && reads.F && fp >= 1 && fp <= reads.F.bases.length) {
+        targetCol = reads.F.colOf ? reads.F.colOf[fp - 1] : fp - 1;
+      } else if (rIntExact && rp !== null && reads.R && rp >= 1 && rp <= reads.R.bases.length) {
+        targetCol = reads.R.colOf ? reads.R.colOf[rp - 1] : rp - 1;
+      } else if (fp !== null && reads.F && fp >= 1 && fp <= reads.F.bases.length) {
+        targetCol = reads.F.colOf ? reads.F.colOf[fp - 1] : fp - 1;
+      } else if (rp !== null && reads.R && rp >= 1 && rp <= reads.R.bases.length) {
+        targetCol = reads.R.colOf ? reads.R.colOf[rp - 1] : rp - 1;
+      }
+    }
+
+    if (targetCol === null || !Number.isFinite(targetCol)) return false;
+
+    const w = activeWidth();
+    const targetSpanCols = Math.min(28, Math.max(totalCols, 1));
+    view.colsPerPx = targetSpanCols / w;
+    clampView();
+    const visible = w * view.colsPerPx;
+    view.col = targetCol - visible / 2;
+    clampView();
+    setHighlight({ col: targetCol, label });
+    draw();
+    return true;
+  }
+
   zoomInBtn?.addEventListener('click', () => zoom(1.4, 0.5));
   zoomOutBtn?.addEventListener('click', () => zoom(0.72, 0.5));
-  resetBtn?.addEventListener('click', () => { fitView(); draw(); });
+  resetBtn?.addEventListener('click', () => {
+    setHighlight(null);
+    fitView();
+    draw();
+  });
   ampSlider?.addEventListener('input', () => {
     const amp = parseFloat(ampSlider.value);
     renderers.F.setAmplitude(amp);
@@ -426,48 +861,99 @@ export function attachTraceViewer({ canvasF, canvasR, metaEl, zoomInBtn, zoomOut
   });
 
   function bindCanvas(canvas) {
-    let dragging = false, lastX = 0;
+    if (!canvas) return;
+    const pointers = new Map();
+    let pinchDist = 0;
+
     canvas.addEventListener('pointerdown', (e) => {
-      dragging = true; lastX = e.clientX;
-      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      canvas.setPointerCapture?.(e.pointerId);
+      if (pointers.size === 2) {
+        const [p1, p2] = [...pointers.values()];
+        pinchDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      }
     });
+
     canvas.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - lastX;
-      lastX = e.clientX;
-      view.col = Math.max(0, view.col - dx * view.colsPerPx);
-      clampView();
-      draw();
+      if (!pointers.has(e.pointerId)) return;
+      const prev = pointers.get(e.pointerId);
+      const curr = { x: e.clientX, y: e.clientY };
+
+      if (pointers.size === 1) {
+        const dx = curr.x - prev.x;
+        pointers.set(e.pointerId, curr);
+        view.col = Math.max(0, view.col - dx * view.colsPerPx);
+        clampView();
+        draw();
+      } else if (pointers.size === 2) {
+        pointers.set(e.pointerId, curr);
+        const [p1, p2] = [...pointers.values()];
+        const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        if (pinchDist > 4 && d > 4) {
+          const rect = canvas.getBoundingClientRect();
+          const midX = (p1.x + p2.x) / 2;
+          const ratio = rect.width > 0 ? (midX - rect.left) / rect.width : 0.5;
+          zoom(d / pinchDist, ratio);
+        }
+        pinchDist = d;
+      }
     });
-    canvas.addEventListener('pointerup', () => { dragging = false; });
+
+    const releasePointer = (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchDist = 0;
+    };
+    canvas.addEventListener('pointerup', releasePointer);
+    canvas.addEventListener('pointercancel', releasePointer);
+    canvas.addEventListener('lostpointercapture', releasePointer);
+
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      zoom(e.deltaY < 0 ? 1.25 : 0.8, (e.clientX - rect.left) / rect.width);
+      const ratio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+      zoom(e.deltaY < 0 ? 1.25 : 0.8, ratio);
     }, { passive: false });
-
-    let pinchDist = 0;
-    canvas.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 2) return;
-      e.preventDefault();
-      const d = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      if (pinchDist) zoom(d / pinchDist, 0.5);
-      pinchDist = d;
-    }, { passive: false });
-    canvas.addEventListener('touchend', () => { pinchDist = 0; });
   }
+
   bindCanvas(canvasF);
   bindCanvas(canvasR);
-  window.addEventListener('resize', () => { clampView(); draw(); });
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', () => { clampView(); draw(); });
+  }
 
   return {
     setData,
+    focusBase,
+    clearHighlight() {
+      setHighlight(null);
+      draw();
+    },
+    setMottCutoff(val) {
+      const num = parseFloat(val);
+      if (!Number.isFinite(num) || num <= 0) return;
+      mottCutoff = num;
+      if (reads.F || reads.R) {
+        recomputeAnnotations();
+        draw();
+      }
+    },
+    setSecPeakThreshold(val) {
+      const num = parseFloat(val);
+      if (!Number.isFinite(num) || num <= 0) return;
+      secPeakThreshold = num;
+      if (reads.F || reads.R) {
+        recomputeAnnotations();
+        draw();
+      }
+    },
     clear() {
+      rawReads = { F: null, R: null };
       reads = { F: null, R: null };
+      setHighlight(null);
+      renderers.F.setRead(null);
+      renderers.R.setRead(null);
       for (const c of [canvasF, canvasR]) {
+        if (!c) continue;
         const ctx = c.getContext('2d');
         ctx.clearRect(0, 0, c.width, c.height);
       }

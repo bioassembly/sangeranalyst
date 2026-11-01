@@ -1,6 +1,8 @@
 {
   "name": "SangerAnalyst",
   "short_name": "SAnalyst",
+  "start_url": "/sangeranalyst/",
+  "scope": "/sangeranalyst/",
   "icons": [
     {
       "src": "web-app-manifest-192x192.png",
