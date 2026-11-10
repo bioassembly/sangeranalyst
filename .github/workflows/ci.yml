@@ -31,6 +31,12 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      - name: Install browser
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Run browser workflow checks
+        run: npm run test:browser
+
       - name: Build site
         run: npm run build
 

@@ -2,7 +2,7 @@
 // Forward and reverse traces are oriented and aligned (semi-global
 // Needleman-Wunsch) so both render in a shared column space, with per-base
 // Phred quality bars, live Mott trim shading, secondary-peak markers,
-// click-to-jump column highlighting, and an amplitude slider — mirroring the
+// an amplitude slider — mirroring the
 // tags the backend pipeline reads (DATA9-12, PLOC2, PBAS2, FWO_1, PCON2).
 
 const CHANNEL_COLORS = { A: '#16a34a', C: '#2563eb', G: '#111827', T: '#dc2626' };
@@ -403,7 +403,7 @@ function createReadRenderer(canvas) {
 
   function setAmplitude(v) { amp = v; }
 
-  function draw(view, highlight = null) {
+  function draw(view) {
     if (!read || !canvas) return;
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -426,19 +426,6 @@ function createReadRenderer(canvas) {
     const plotH = h - padBottom - padTop;
     const baseline = h - padBottom;
     const spacing = 1 / view.colsPerPx;
-
-    // 1. Highlighted base column (from conflict / secondary-peak click-to-jump)
-    if (highlight && Number.isFinite(highlight.col)) {
-      const hx = (highlight.col - view.col) / view.colsPerPx;
-      const bandW = Math.max(spacing, 8);
-      if (hx + bandW >= 0 && hx - bandW <= w) {
-        ctx.fillStyle = 'rgba(37, 99, 235, 0.13)';
-        ctx.fillRect(hx - bandW / 2, posH, bandW, h - posH);
-        ctx.strokeStyle = 'rgba(37, 99, 235, 0.6)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(hx - bandW / 2 + 0.5, posH + 0.5, Math.max(1, bandW - 1), h - posH - 1);
-      }
-    }
 
     // 2. Live Mott quality-trim curtains (5' and 3' trimmed tails)
     const trimWin = read.trimWindow;
@@ -601,14 +588,12 @@ export function attachTraceViewer({
   resetBtn,
   ampSlider,
   scrollBar,
-  onFocusChange,
 }) {
   let rawReads = { F: null, R: null };
   let reads = { F: null, R: null };
   let revComplemented = false;
   let mottCutoff = 0.1;
   let secPeakThreshold = 33;
-  let highlight = null;
   let totalCols = 0;
   let view = { col: 0, colsPerPx: 1 };
   const PX_PER_COL = 20;
@@ -653,8 +638,8 @@ export function attachTraceViewer({
   }
 
   function draw() {
-    renderers.F.draw(view, highlight);
-    renderers.R.draw(view, highlight);
+    renderers.F.draw(view);
+    renderers.R.draw(view);
     syncScrollBar();
   }
 
@@ -694,18 +679,12 @@ export function attachTraceViewer({
     draw();
   }
 
-  function setHighlight(next) {
-    highlight = next;
-    onFocusChange?.(highlight);
-  }
-
   function setData(fwdInput, revInput, nameF, nameR) {
     rawReads = { F: cloneRawRead(fwdInput), R: cloneRawRead(revInput) };
     const fwd = cloneRawRead(fwdInput);
     const rev = cloneRawRead(revInput);
     reads = { F: fwd, R: rev };
     revComplemented = false;
-    setHighlight(null);
 
     const parts = [];
     let stats = null;
@@ -790,59 +769,9 @@ export function attachTraceViewer({
     return stats;
   }
 
-  function parsePosHint(posVal) {
-    if (typeof posVal === 'number' && Number.isFinite(posVal)) return Math.round(posVal);
-    if (typeof posVal === 'string') {
-      const trimmed = posVal.trim();
-      if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
-      const m = trimmed.match(/inbetween\s+(\d+)-(\d+)/i);
-      if (m) return parseInt(m[1], 10);
-    }
-    return null;
-  }
-
-  // Jump to a base using raw 1-based read coordinates (F_ab1pos on forward,
-  // or oriented R_ab1pos on reverse) mapped through colOf to the shared canvas
-  // column — never consensus coordinates directly.
-  function focusBase({ fPos = null, rPos = null, col = null, label = '' } = {}) {
-    if (!reads.F && !reads.R) return false;
-    let targetCol = Number.isFinite(col) ? col : null;
-
-    if (targetCol === null) {
-      const fIntExact = typeof fPos === 'number' || (typeof fPos === 'string' && /^\d+$/.test(fPos.trim()));
-      const rIntExact = typeof rPos === 'number' || (typeof rPos === 'string' && /^\d+$/.test(rPos.trim()));
-      const fp = parsePosHint(fPos);
-      const rp = parsePosHint(rPos);
-
-      if (fIntExact && fp !== null && reads.F && fp >= 1 && fp <= reads.F.bases.length) {
-        targetCol = reads.F.colOf ? reads.F.colOf[fp - 1] : fp - 1;
-      } else if (rIntExact && rp !== null && reads.R && rp >= 1 && rp <= reads.R.bases.length) {
-        targetCol = reads.R.colOf ? reads.R.colOf[rp - 1] : rp - 1;
-      } else if (fp !== null && reads.F && fp >= 1 && fp <= reads.F.bases.length) {
-        targetCol = reads.F.colOf ? reads.F.colOf[fp - 1] : fp - 1;
-      } else if (rp !== null && reads.R && rp >= 1 && rp <= reads.R.bases.length) {
-        targetCol = reads.R.colOf ? reads.R.colOf[rp - 1] : rp - 1;
-      }
-    }
-
-    if (targetCol === null || !Number.isFinite(targetCol)) return false;
-
-    const w = activeWidth();
-    const targetSpanCols = Math.min(28, Math.max(totalCols, 1));
-    view.colsPerPx = targetSpanCols / w;
-    clampView();
-    const visible = w * view.colsPerPx;
-    view.col = targetCol - visible / 2;
-    clampView();
-    setHighlight({ col: targetCol, label });
-    draw();
-    return true;
-  }
-
   zoomInBtn?.addEventListener('click', () => zoom(1.4, 0.5));
   zoomOutBtn?.addEventListener('click', () => zoom(0.72, 0.5));
   resetBtn?.addEventListener('click', () => {
-    setHighlight(null);
     fitView();
     draw();
   });
@@ -923,11 +852,6 @@ export function attachTraceViewer({
 
   return {
     setData,
-    focusBase,
-    clearHighlight() {
-      setHighlight(null);
-      draw();
-    },
     setMottCutoff(val) {
       const num = parseFloat(val);
       if (!Number.isFinite(num) || num <= 0) return;
@@ -949,7 +873,6 @@ export function attachTraceViewer({
     clear() {
       rawReads = { F: null, R: null };
       reads = { F: null, R: null };
-      setHighlight(null);
       renderers.F.setRead(null);
       renderers.R.setRead(null);
       for (const c of [canvasF, canvasR]) {

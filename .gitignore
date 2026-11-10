@@ -23,3 +23,6 @@ pnpm-debug.log*
 
 # tooling artifacts
 .playwright-mcp/
+
+# Browser test artifacts
+test-results/

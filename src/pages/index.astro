@@ -11,7 +11,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
   </header>
 
   <main>
-    <div class="card" role="main" aria-labelledby="pageTitle">
+    <div class="card" aria-labelledby="pageTitle">
       <div class="upload-section" id="uploadSection">
         <div class="ab1-row">
           <div class="drop-slot" id="dropZoneF">
@@ -46,7 +46,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
               </div>
             </div>
             <input id="primerF-file" type="file" accept=".fasta,.fa,.fna,.txt" style="display:none;" />
-            <input id="primerF-text" class="text-primer" type="text" maxlength="100" placeholder="Enter forward primer sequence (5' → 3')" style="display:block;"/>
+            <input id="primerF-text" class="text-primer" type="text" maxlength="5000000" placeholder="Enter forward primer sequence (5' → 3')" style="display:block;"/>
           </div>
           <div style="flex:1">
             <div class="primer-header">
@@ -57,7 +57,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
               </div>
             </div>
             <input id="primerR-file" type="file" accept=".fasta,.fa,.fna,.txt" style="display:none;" />
-            <input id="primerR-text" class="text-primer" type="text" maxlength="100" placeholder="Enter reverse primer sequence (5' → 3')" style="display:block;"/>
+            <input id="primerR-text" class="text-primer" type="text" maxlength="5000000" placeholder="Enter reverse primer sequence (5' → 3')" style="display:block;"/>
           </div>
         </div>
 
@@ -116,7 +116,6 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
         <div class="trace-head">
           <div class="trace-title-group">
             <div class="trace-title">Chromatogram preview</div>
-            <span id="traceFocusPill" class="trace-focus-pill" style="display:none"></span>
           </div>
           <div class="trace-controls">
             <button class="trace-btn" id="traceZoomOut" type="button" aria-label="Zoom out">−</button>
@@ -146,6 +145,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
         <div id="traceWarn" class="trace-warn" style="display:none" role="alert"></div>
         <div class="small trace-meta">
           <span id="traceMeta"></span>
+          <span>Preview alignment can differ from the final assembly.</span>
           <span class="trace-legend">
             <span style="color:#16a34a">A</span>
             <span style="color:#2563eb">C</span>
@@ -157,30 +157,13 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
       </div>
 
       <div class="result-section" id="results" aria-live="polite" style="display:none">
-        <div class="summary-card" id="summaryCard" style="display:none">
-          <div class="summary-head">
-            <div class="summary-title">Assembly Summary &amp; Inspector</div>
-            <div class="summary-actions">
-              <button class="result-btn" id="blastConsensusBtn" type="button" title="Search primary consensus sequence on NCBI BLASTn">
-                NCBI BLASTn ↗
-              </button>
-            </div>
-          </div>
-          <div class="summary-grid" id="summaryMetrics"></div>
-
-          <div class="orf-strip" id="orfStrip" style="display:none">
-            <div class="orf-info">
-              <span class="orf-badge" id="orfMeta"></span>
-              <code class="orf-seq" id="orfSeqPreview"></code>
-            </div>
-            <button class="result-btn" id="copyOrfBtn" type="button">Copy Protein FASTA</button>
-          </div>
-
-          <div class="inspector-strip" id="inspectorStrip"></div>
-        </div>
-
+        <p id="staleResultNotice" role="status" hidden>Inputs changed. Run Analyze again to update these results before exporting.</p>
+        <div id="server-warn" class="server-warn" role="alert" hidden></div>
+        <p id="primerOutcome" class="small" style="white-space:pre-line" hidden></p>
+        <button class="result-btn" id="downloadAnalysisBtn" type="button">Download analysis details (.json)</button>
         <div class="result-block">
           <div class="result-title">High Confidence Consensus</div>
+          <p class="result-hint">Sequence from the statistically validated overlapping region of both reads.</p>
           <div class="result-controls">
             <button class="result-btn result-btn-primary copy-fasta-btn" data-target="strict" type="button">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -197,14 +180,23 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
               </svg>
               Download .fasta
             </button>
+
+          </div>
+          <p id="strictEmpty" class="small" hidden>No validated overlapping sequence is available. Read the warnings and full report before using the full merge.</p>
+          <pre id="strict"></pre>
+          <p class="small"><a class="blast-link" data-target="strict" href="https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&amp;PAGE_TYPE=BlastSearch" target="_blank" rel="noopener noreferrer">NCBI BLASTn ↗</a> — copy this output's FASTA and paste it into BLAST.</p>
+          <details class="report-details">
+            <summary>Full report</summary>
+            <div class="result-controls">
             <button class="result-btn copy-btn" data-target="strict" type="button">
               Copy Report
             </button>
             <button class="result-btn download-btn" data-target="strict" type="button">
               Download Report (.txt)
             </button>
-          </div>
-          <pre id="strict">—</pre>
+            </div>
+            <pre id="strictReport"></pre>
+          </details>
         </div>
 
         <div class="result-block">
@@ -228,14 +220,23 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
               </svg>
               Download .fasta
             </button>
+
+          </div>
+          <p id="fullEmpty" class="small" hidden>No merged sequence is available. Check your input reads and the full report.</p>
+          <pre id="full"></pre>
+          <p class="small"><a class="blast-link" data-target="full" href="https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&amp;PAGE_TYPE=BlastSearch" target="_blank" rel="noopener noreferrer">NCBI BLASTn ↗</a> — copy this output's FASTA and paste it into BLAST.</p>
+          <details class="report-details">
+            <summary>Full report</summary>
+            <div class="result-controls">
             <button class="result-btn copy-btn" data-target="full" type="button">
               Copy Report
             </button>
             <button class="result-btn download-btn" data-target="full" type="button">
               Download Report (.txt)
             </button>
-          </div>
-          <pre id="full">—</pre>
+            </div>
+            <pre id="fullReport"></pre>
+          </details>
         </div>
 
         <div id="primerResultBlock" class="result-block" style="display:none">
@@ -256,14 +257,23 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
               </svg>
               Download .fasta
             </button>
+
+          </div>
+          <p id="primerTrimEmpty" class="small" hidden>No primer-trimmed sequence is available. Check primer matches in the full report.</p>
+          <pre id="primerTrim"></pre>
+          <p class="small"><a class="blast-link" data-target="primerTrim" href="https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&amp;PAGE_TYPE=BlastSearch" target="_blank" rel="noopener noreferrer">NCBI BLASTn ↗</a> — copy this output's FASTA and paste it into BLAST.</p>
+          <details class="report-details">
+            <summary>Full report</summary>
+            <div class="result-controls">
             <button class="result-btn copy-btn" data-target="primerTrim" type="button">
               Copy Report
             </button>
             <button class="result-btn download-btn" data-target="primerTrim" type="button">
               Download Report (.txt)
             </button>
-          </div>
-          <pre id="primerTrim">—</pre>
+            </div>
+            <pre id="primerTrimReport"></pre>
+          </details>
         </div>
       </div>
     </div>
@@ -271,7 +281,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
     <div class="how">
       <h3>How Does It Work?</h3>
       <p class="small" style="margin-top:8px">
-        SangerAnalyst trims low-quality regions with Mott's algorithm, verifies the forward–reverse overlap is statistically real, aligns the reads and builds a quality-weighted consensus — sequencing errors are corrected from the higher-quality strand, while true heterozygous positions (confirmed by secondary peaks) are kept as IUPAC ambiguity codes. Primer &amp; off-target regions are then trimmed away for a clean final report. <br/><br/> Powered by Biopython — trusted library for sequence processing and alignment.
+        SangerAnalyst trims low-quality regions with Mott's algorithm, verifies the forward–reverse overlap is statistically real, aligns the reads and builds a quality-weighted consensus — sequencing errors are corrected from the higher-quality strand, while disagreements corroborated by secondary peaks are kept as IUPAC ambiguity codes. Primer &amp; off-target regions are then trimmed away for a clean final report. <br/><br/> Powered by Biopython — trusted library for sequence processing and alignment.
       </p>
     </div>
 

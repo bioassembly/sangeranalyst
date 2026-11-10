@@ -19,9 +19,8 @@ https://bioassembly.github.io/sangeranalyst
 
 ## ✨ Features
 
-- **Chromatogram viewer** — stacked forward/reverse peak traces parsed client-side from your `.ab1` files, with zoom, pan/scrollbar, peak-height control, per-base quality bars, **live Mott trim shading**, **secondary-peak markers (`◆`)**, **click-to-jump conflict/peak inspection**, and a low-identity warning when reads may not share a template.
+- **Chromatogram viewer** — stacked forward/reverse peak traces parsed client-side from your `.ab1` files, with zoom, pan/scrollbar, peak-height control, per-base quality bars, **live Mott trim shading**, **secondary-peak markers (`◆`)**, and a low-identity warning when reads may not share a template.
 - **Quality-weighted consensus** — Mott trimming, automatic orientation detection, statistically validated overlap, PolyPhred-style heterozygote calling (IUPAC codes), and conflict/secondary-peak reports embedded in each output.
-- **Assembly summary & ORF translation** — at-a-glance overlap length & identity %, GC content, conflict/IUPAC/N counts, automatic 6-frame **longest reading frame (ORF)** detection with 1-click **Copy Protein FASTA**, and 1-click **NCBI BLASTn** launch.
 - **Smart upload & primer handling** — drag & drop `.ab1` auto-pairing (`_F`/`_R`, `27F`/`1492R`, etc.), 1-click `⇄` F/R swap, plus FASTA (`.fasta`/`.fa`/`.fna`/`.txt`) or pasted primer sequences (IUPAC accepted, min 10 bases).
 - **Clean FASTA & Full Report exports** — High-Confidence Consensus, Full Merge, and conditional Primer-Trimmed Consensus each provide **Copy FASTA** / **Download `.fasta`** (strict FASTA for BLAST/SnapGene/Biopython) alongside **Copy Report** / **Download Report (`.txt`)**; IUPAC ambiguity bases are highlighted strictly on sequence lines.
 - **Demo dataset** — **Try demo data** button loads the bundled control files instantly.
@@ -87,12 +86,21 @@ This provides the longest methodologically reliable sequence, though meaning it'
 
 ---
 
+## Development and analysis exports
+
+Run `npm ci`, `npm test`, and `npm run build`. Browser checks use `npm run test:browser` after installing Chromium with `node node_modules/playwright-core/cli.js install chromium`.
+
+Results show nucleotide FASTA first, with the full report available in a disclosure. Editing reads, primers, or settings marks the completed analysis stale and disables exports until rerun. Downloads use the filenames and settings captured for that analysis.
+
+Download `analysis.json` to retain effective parameters, normalized primers, SHA-256 input/sequence hashes, warnings, and available server software provenance. Older APIs are supported and explicitly marked as lacking server provenance. Use Copy FASTA beside the chosen output before opening its BLAST link.
+
+Primers accept raw DNA or one FASTA record, with IUPAC ambiguity codes, at least 10 bases, and a 5 MB input limit. Invalid encoding, digits, and multiple records are rejected. Ambiguous dropped read pairs require explicit Forward/Reverse slot assignment.
+
 ## 🛠️ Roadmap (To-Do Next)
 
-- 🧬 **Gene annotations** — automatic ORF detection.  
 - 🧭 **Reference mapping** — align consensus to a reference and highlight differences.  
 - 📦 **Batch processing** — analyze multiple samples at once.
-- 📈 **Viewer enhancements** — deeper conflict-to-trace linking on top of the shipped chromatogram viewer.
+- 📈 **Viewer enhancements** — consistent orientation and quality preview across analysis routes.
 
 ---
 

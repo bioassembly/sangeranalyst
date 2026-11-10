@@ -4,8 +4,7 @@ import assert from 'node:assert/strict';
 import {
   extractCleanFasta,
   renderReportHtml,
-  findLongestOrf,
-  buildSummaryFromOutputs,
+  normalizePrimer,
   classifyAb1Pair,
 } from '../src/scripts/sequtils.js';
 
@@ -71,38 +70,6 @@ test('renderReportHtml highlights IUPAC codes ONLY on FASTA sequence lines', () 
   assert.ok(fwdLine && !fwdLine.includes('<span class="amb">'));
 });
 
-test('findLongestOrf detects longest 6-frame ORF and ATG presence', () => {
-  // Frame +1: ATG CTA(L) TCA(S) TTA(L) GCT(A) TTC(F) AAA(K) GCT(A) GAC(D) TAA(*) -> MLSLFKAD? (9 aa)
-  const orf = findLongestOrf('ATGCTATCATTAGCTTTCAAAGCTGACTAA');
-  assert.ok(orf);
-  assert.equal(orf.frame, '+1');
-  assert.equal(orf.aa_seq, 'MLSLAFKAD');
-  assert.equal(orf.aa_len, 9);
-  assert.equal(orf.has_atg, true);
-});
-
-test('buildSummaryFromOutputs parses legacy text reports when server summary is absent', () => {
-  const summary = buildSummaryFromOutputs({
-    consensus_strict: SAMPLE_REPORT,
-    consensus_full: SAMPLE_REPORT,
-  }, null);
-
-  assert.equal(summary.strict_len, 70);
-  assert.equal(summary.overlap_len, 70);
-  assert.equal(summary.overlap_passed, true);
-  assert.equal(summary.conflict_count, 2);
-  assert.equal(summary.ambiguous_count, 2); // R and Y
-  assert.equal(summary.conflicts[0].F_ab1pos, 31);
-  assert.equal(summary.conflicts[0].R_ab1pos, 28);
-  assert.equal(summary.conflicts[1].F_ab1pos, 'inbetween 40-41');
-  assert.equal(summary.secondary_peaks.fwd.length, 1);
-  assert.equal(summary.secondary_peaks.fwd[0].position, 31);
-  assert.equal(summary.secondary_peaks.fwd[0].percentage, 41);
-  assert.equal(summary.secondary_peaks.rev.length, 1);
-  assert.equal(summary.secondary_peaks.rev[0].position, 28);
-  assert.equal(summary.secondary_peaks.rev[0].primary_base, 'G');
-});
-
 test('classifyAb1Pair auto-assigns Forward and Reverse files by naming convention', () => {
   const paired16s = classifyAb1Pair([
     { name: 'Sample01_1492R.ab1' },
@@ -121,4 +88,25 @@ test('classifyAb1Pair auto-assigns Forward and Reverse files by naming conventio
   const soloRev = classifyAb1Pair([{ name: 'amplicon_rev.ab1' }]);
   assert.equal(soloRev.fileF, null);
   assert.equal(soloRev.fileR.name, 'amplicon_rev.ab1');
+});
+
+
+test('uncertain pairs and extra files require explicit slot assignment', () => {
+  for (const names of [['unknown.ab1'], ['both_F_R.ab1'], ['a.ab1', 'b.ab1'], ['a_F.ab1', 'b_F.ab1'], ['a_F.ab1', 'b_R.ab1', 'c_R.ab1']]) {
+    assert.deepEqual(classifyAb1Pair(names.map(name => ({ name }))), { fileF: null, fileR: null, ambiguous: true });
+  }
+});
+
+test('primer normalization accepts one DNA record and rejects unintended concatenation', () => {
+  assert.equal(normalizePrimer('>primer\nacgtnrykms\n'), 'ACGTNRYKMS');
+  assert.equal(normalizePrimer(' acgt nrykms '), 'ACGTNRYKMS');
+  for (const text of ['', 'ACGTNRYKM', 'ACGT123ACGT', '>one\nACGTACGTAC\n>two\nACGTACGTAC', 'ACGTACGTAC\n>late\nACGT']) {
+    assert.throws(() => normalizePrimer(text));
+  }
+  assert.throws(() => normalizePrimer('A'.repeat(5_000_001)));
+});
+
+
+test('primer byte limit includes FASTA headers and whitespace', () => {
+  assert.throws(() => normalizePrimer('>' + 'é'.repeat(2_500_000) + '\nACGTACGTAC'));
 });

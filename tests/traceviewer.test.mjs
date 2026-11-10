@@ -167,7 +167,7 @@ test('detectTraceSecondaryPeaks finds local secondary maxima above threshold', (
   assert.equal(compPeaks[0].secondaryBase, 'C');
 });
 
-test('alignColumns aligns semi-global overlap and attachTraceViewer handles Reverse-only & focusBase', () => {
+test('alignColumns aligns semi-global overlap and attachTraceViewer handles Reverse-only preview', () => {
   const overlap = 'ACGTACGTACGTACGTACGTACGTACGTACGT';
   const fwdSeq = 'TTTTTT' + overlap;
   const revRcSeq = overlap + 'CCCCCC';
@@ -228,6 +228,4 @@ test('alignColumns aligns semi-global overlap and attachTraceViewer handles Reve
   assert.equal(statsSolo.revComplemented, false);
   // Caller's read object must not be mutated
   assert.equal(sampleRead.bases, origBases);
-  assert.equal(viewer.focusBase({ rPos: 5, label: 'Peak 5' }), true);
-  assert.equal(viewer.focusBase({ rPos: 'inbetween 4-5', label: 'Gap' }), true);
 });

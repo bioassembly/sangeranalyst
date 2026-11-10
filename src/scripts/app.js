@@ -9,10 +9,13 @@ import { attachTraceViewer, parseABIF } from './traceviewer.js';
 import {
   extractCleanFasta,
   renderReportHtml,
-  buildSummaryFromOutputs,
   classifyAb1Pair,
-  wrapFastaSeq,
+  normalizePrimer,
 } from './sequtils.js';
+import { createRunState, sampleSlug, createAnalysisExport } from './runstate.js';
+
+const runState = createRunState();
+let busy = false;
 
 const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mldawblv';
 const BASE = document.documentElement.dataset.base || '/';
@@ -66,6 +69,7 @@ function setPrimerMode(target, mode) {
   const label = document.getElementById(`primer${target}-label`);
   const btn = document.querySelector(`.toggle-btn[data-target="${target}"]`);
   if (!fileInput || !textInput) return;
+  invalidateResults();
 
   if (mode === 'text') {
     fileInput.style.display = 'none';
@@ -97,6 +101,7 @@ document.querySelectorAll('.toggle-btn').forEach(btn => {
 document.querySelectorAll('.reset-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const target = btn.dataset.target;
+    invalidateResults();
     document.getElementById(`primer${target}-file`).value = '';
     document.getElementById(`primer${target}-text`).value = '';
   });
@@ -155,21 +160,9 @@ window.addEventListener('scroll', hideTooltips, { passive: true });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTooltips(); });
 
 // ==================== SEQUENCE VALIDATION ====================
-function cleanAndValidateDNA(seq, minLen = 3) {
-  if (!seq) return null;
-  const cleaned = seq
-    .replace(/^>.*$/gm, '')
-    .replace(/[\s0-9]/g, '')
-    .toUpperCase();
-  if (!/^[ATGCNRYKMSWBDHV]+$/.test(cleaned)) return null;
-  if (cleaned.length < minLen) return null;
-  return cleaned;
-}
-
 // ==================== CHROMATOGRAM TRACE VIEWER ===================
 const traceSection = document.getElementById('traceSection');
 const traceMeta = document.getElementById('traceMeta');
-const traceFocusPill = document.getElementById('traceFocusPill');
 
 const traceViewer = attachTraceViewer({
   canvasF: document.getElementById('traceCanvasF'),
@@ -180,16 +173,7 @@ const traceViewer = attachTraceViewer({
   resetBtn: document.getElementById('traceReset'),
   ampSlider: document.getElementById('traceAmp'),
   scrollBar: document.getElementById('traceScrollBar'),
-  onFocusChange(focus) {
-    if (!traceFocusPill) return;
-    if (!focus || !focus.label) {
-      traceFocusPill.style.display = 'none';
-      traceFocusPill.textContent = '';
-    } else {
-      traceFocusPill.textContent = `Inspecting: ${focus.label}`;
-      traceFocusPill.style.display = 'inline-flex';
-    }
-  },
+
 });
 
 // Sync initial and live Mott / Secondary-peak parameters with the trace preview
@@ -270,6 +254,7 @@ async function refreshTraces() {
 }
 
 async function validateAb1Field(inputId, which, triggerRefresh = true) {
+  invalidateResults();
   const file = document.getElementById(inputId).files[0];
   traceFiles[which] = file || null;
   setInlineError(inputId, null);
@@ -299,17 +284,21 @@ document.getElementById('fileR').addEventListener('change', () => validateAb1Fie
 // ==================== SWAP READS & DRAG-AND-DROP PAIRING ===================
 const swapReadsBtn = document.getElementById('swapReadsBtn');
 swapReadsBtn?.addEventListener('click', async () => {
-  const inputF = document.getElementById('fileF');
-  const inputR = document.getElementById('fileR');
-  const curF = inputF.files[0] || null;
-  const curR = inputR.files[0] || null;
-  if (!curF && !curR) return;
-  setInputFile(inputF, curR);
-  setInputFile(inputR, curF);
-  await validateAb1Field('fileF', 'F', false);
-  await validateAb1Field('fileR', 'R', false);
-  await refreshTraces();
-  setStatus('Swapped Forward and Reverse reads.');
+  if (busy) return;
+  setBusyState(true);
+  try {
+    const inputF = document.getElementById('fileF');
+    const inputR = document.getElementById('fileR');
+    const curF = inputF.files[0] || null;
+    const curR = inputR.files[0] || null;
+    if (!curF && !curR) return;
+    setInputFile(inputF, curR);
+    setInputFile(inputR, curF);
+    await validateAb1Field('fileF', 'F', false);
+    await validateAb1Field('fileR', 'R', false);
+    await refreshTraces();
+    setStatus('Swapped Forward and Reverse reads.');
+  } finally { setBusyState(false); setResultActions(runState.isFresh()); }
 });
 
 const uploadSection = document.getElementById('uploadSection');
@@ -332,553 +321,333 @@ uploadSection?.addEventListener('dragleave', () => {
 uploadSection?.addEventListener('drop', async (e) => {
   dragDepth = 0;
   uploadSection.classList.remove('drag-active');
+  if (busy) { e.preventDefault(); return; }
   const dropped = [...(e.dataTransfer?.files || [])];
   if (!dropped.length) return;
 
   const ab1Files = dropped.filter(f => AB1_RE.test(f.name));
   if (!ab1Files.length) return; // allow native drop if not .ab1
   e.preventDefault();
+  setBusyState(true);
+  try {
 
-  const targetZoneR = e.target.closest?.('#dropZoneR');
-  const targetZoneF = e.target.closest?.('#dropZoneF');
-  const inputF = document.getElementById('fileF');
-  const inputR = document.getElementById('fileR');
+    const targetZoneR = e.target.closest?.('#dropZoneR');
+    const targetZoneF = e.target.closest?.('#dropZoneF');
+    const inputF = document.getElementById('fileF');
+    const inputR = document.getElementById('fileR');
 
-  if (ab1Files.length === 1) {
-    const single = ab1Files[0];
-    if (targetZoneR) {
-      setInputFile(inputR, single);
-    } else if (targetZoneF) {
-      setInputFile(inputF, single);
+    if (ab1Files.length > 2) {
+      setStatus('Use one read pair at a time. Select a Forward and Reverse file explicitly.', true);
+      return;
+    }
+    if (ab1Files.length === 1) {
+      const single = ab1Files[0];
+      if (targetZoneR) {
+        setInputFile(inputR, single);
+      } else if (targetZoneF) {
+        setInputFile(inputF, single);
+      } else {
+        const guessed = classifyAb1Pair(ab1Files);
+        if (guessed.fileR && !inputR.files[0]) setInputFile(inputR, single);
+        else if (!inputF.files[0]) setInputFile(inputF, single);
+        else setInputFile(inputR, single);
+      }
     } else {
-      const guessed = classifyAb1Pair(ab1Files);
-      if (guessed.fileR && !inputR.files[0]) setInputFile(inputR, single);
-      else if (!inputF.files[0]) setInputFile(inputF, single);
-      else setInputFile(inputR, single);
+      const { fileF, fileR, ambiguous } = classifyAb1Pair(ab1Files);
+      if (ambiguous) {
+        setStatus('Could not determine read directions. Drop each file into its Forward or Reverse slot.', true);
+        return;
+      }
+      if (fileF) setInputFile(inputF, fileF);
+      if (fileR) setInputFile(inputR, fileR);
     }
-  } else {
-    const { fileF, fileR } = classifyAb1Pair(ab1Files);
-    if (fileF) setInputFile(inputF, fileF);
-    if (fileR) setInputFile(inputR, fileR);
-  }
 
-  await validateAb1Field('fileF', 'F', false);
-  await validateAb1Field('fileR', 'R', false);
-  await refreshTraces();
-  setStatus(ab1Files.length >= 2
-    ? `Paired "${inputF.files[0]?.name || ''}" (F) and "${inputR.files[0]?.name || ''}" (R).`
-    : `Loaded "${ab1Files[0].name}".`);
+    await validateAb1Field('fileF', 'F', false);
+    await validateAb1Field('fileR', 'R', false);
+    await refreshTraces();
+    setStatus(ab1Files.length >= 2
+      ? `Paired "${inputF.files[0]?.name || ''}" (F) and "${inputR.files[0]?.name || ''}" (R).`
+      : `Loaded "${ab1Files[0].name}".`);
+  } finally { setBusyState(false); setResultActions(runState.isFresh()); }
 });
 
-// ==================== SEQUENCE & SUMMARY RENDERING ===================
-function renderSeq(el, text) {
-  if (!text || text === '—' || text === '-') {
-    el.textContent = '—';
-    return;
-  }
-  el.innerHTML = renderReportHtml(text);
-}
-
-let currentSummary = null;
-const summaryCard = document.getElementById('summaryCard');
-const summaryMetricsEl = document.getElementById('summaryMetrics');
-const orfStripEl = document.getElementById('orfStrip');
-const orfMetaEl = document.getElementById('orfMeta');
-const orfSeqPreviewEl = document.getElementById('orfSeqPreview');
-const inspectorStripEl = document.getElementById('inspectorStrip');
-
-function jumpToTracePosition(spec) {
-  if (traceSection.style.display === 'none') return;
-  const ok = traceViewer.focusBase(spec);
-  if (ok) {
-    traceSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-}
-
-function renderSummaryDashboard(summary) {
-  currentSummary = summary;
-  if (!summaryCard || !summary) {
-    if (summaryCard) summaryCard.style.display = 'none';
-    return;
-  }
-
-  summaryMetricsEl.innerHTML = '';
-  const addMetric = (label, value, sub = '', tone = '') => {
-    const tile = document.createElement('div');
-    tile.className = `summary-tile${tone ? ' ' + tone : ''}`;
-    const lbl = document.createElement('div');
-    lbl.className = 'summary-tile-label';
-    lbl.textContent = label;
-    const val = document.createElement('div');
-    val.className = 'summary-tile-val';
-    val.textContent = value;
-    tile.append(lbl, val);
-    if (sub) {
-      const subEl = document.createElement('div');
-      subEl.className = 'summary-tile-sub';
-      subEl.textContent = sub;
-      tile.append(subEl);
-    }
-    summaryMetricsEl.append(tile);
-  };
-
-  if (summary.overlap_passed && summary.overlap_len > 0) {
-    const pct = (summary.overlap_identity * 100).toFixed(1);
-    addMetric('Validated Overlap', `${summary.overlap_len} bp`, `${pct}% identity`, 'tile-ok');
-  } else {
-    addMetric('Validated Overlap', 'None', 'Failed significance gate', 'tile-warn');
-  }
-
-  const lenSub = summary.primer_trim_len !== null && summary.primer_trim_len !== undefined
-    ? `Full ${summary.full_len} bp · Trimmed ${summary.primer_trim_len} bp`
-    : `Full Merge ${summary.full_len} bp`;
-  addMetric('High-Conf Length', `${summary.strict_len} bp`, lenSub);
-
-  addMetric('GC Content', `${summary.gc_percent}%`, `${summary.primary_label} sequence`);
-
-  const nCount = summary.strict_len > 0 ? summary.strict_n_count : summary.full_n_count;
-  const qualTone = summary.ambiguous_count > 0 ? 'tile-iupac' : '';
-  addMetric(
-    'Variant & Quality Calls',
-    `${summary.conflict_count} conflict${summary.conflict_count === 1 ? '' : 's'}`,
-    `${summary.ambiguous_count} IUPAC · ${nCount} N`,
-    qualTone
-  );
-
-  // Longest ORF strip
-  const orf = summary.longest_orf;
-  if (orf && orf.aa_len >= 10) {
-    const preview = orf.aa_seq.length > 38 ? `${orf.aa_seq.slice(0, 38)}…` : orf.aa_seq;
-    const atgNote = orf.has_atg ? ' · contains ATG' : '';
-    orfMetaEl.textContent = `Longest frame ${orf.frame}: ${orf.aa_len} aa (${orf.start}–${orf.end} nt${atgNote})`;
-    orfSeqPreviewEl.textContent = preview;
-    orfStripEl.style.display = 'flex';
-  } else {
-    orfStripEl.style.display = 'none';
-  }
-
-  // Interactive Conflict & Secondary Peak Inspector
-  inspectorStripEl.innerHTML = '';
-  const conflicts = Array.isArray(summary.conflicts) ? summary.conflicts : [];
-  const spFwd = summary.secondary_peaks?.fwd || [];
-  const spRev = summary.secondary_peaks?.rev || [];
-
-  if (conflicts.length === 0 && spFwd.length === 0 && spRev.length === 0) {
-    const clean = document.createElement('div');
-    clean.className = 'inspector-clean';
-    clean.textContent = summary.overlap_passed
-      ? '✓ Clean overlap — 0 conflicts and 0 secondary peaks in the high-confidence region.'
-      : 'No high-confidence overlap sites to inspect.';
-    inspectorStripEl.append(clean);
-  } else {
-    const caption = document.createElement('div');
-    caption.className = 'inspector-caption';
-    caption.textContent = 'Click any site below to jump to its exact peak on the chromatogram preview:';
-    const pillWrap = document.createElement('div');
-    pillWrap.className = 'inspector-pills';
-
-    const iupacCodes = new Set(['R', 'Y', 'K', 'M', 'S', 'W', 'B', 'D', 'H', 'V']);
-    for (const c of conflicts.slice(0, 40)) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      const isHet = iupacCodes.has(c.using_seq);
-      btn.className = `inspector-pill ${isHet ? 'pill-het' : 'pill-conflict'}`;
-      const label = `Pos ${c.position}: ${c.F_seq}/${c.R_seq} → ${c.using_seq}`;
-      btn.textContent = label;
-      btn.title = `Forward pos: ${c.F_ab1pos} (Q=${c.F_phred}) · Reverse RC pos: ${c.R_ab1pos} (Q=${c.R_phred})`;
-      btn.addEventListener('click', () => {
-        jumpToTracePosition({ fPos: c.F_ab1pos, rPos: c.R_ab1pos, label });
-      });
-      pillWrap.append(btn);
-    }
-
-    for (const p of spFwd.slice(0, 20)) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'inspector-pill pill-peak';
-      const label = `F:${p.position} 2° ${p.primary_base}/${p.secondary_base} (${Math.round(p.percentage)}%)`;
-      btn.textContent = label;
-      btn.addEventListener('click', () => {
-        jumpToTracePosition({ fPos: p.position, label });
-      });
-      pillWrap.append(btn);
-    }
-
-    for (const p of spRev.slice(0, 20)) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'inspector-pill pill-peak';
-      const label = `R:${p.position} 2° ${p.primary_base}/${p.secondary_base} (${Math.round(p.percentage)}%)`;
-      btn.textContent = label;
-      btn.addEventListener('click', () => {
-        jumpToTracePosition({ rPos: p.position, label });
-      });
-      pillWrap.append(btn);
-    }
-
-    inspectorStripEl.append(caption, pillWrap);
-  }
-
-  const blastBtn = document.getElementById('blastConsensusBtn');
-  if (blastBtn) {
-    blastBtn.disabled = !summary.primary_seq;
-  }
-  summaryCard.style.display = 'block';
-}
-
-document.getElementById('copyOrfBtn')?.addEventListener('click', (e) => {
-  const btn = e.currentTarget;
-  const orf = currentSummary?.longest_orf;
-  if (!orf?.aa_seq) return;
-  const sample = getSampleSlug();
-  const fasta = `>${sample}_ORF_frame${orf.frame}_${orf.aa_len}aa\n${wrapFastaSeq(orf.aa_seq, 60)}\n`;
-  flashCopied(btn, fasta);
-});
-
-document.getElementById('blastConsensusBtn')?.addEventListener('click', () => {
-  const seq = currentSummary?.primary_seq;
-  if (!seq) return;
-  const sample = getSampleSlug();
-  const query = `>${sample}_${currentSummary.primary_label.replace(/\s+/g, '_')}\n${seq.slice(0, 6500)}`;
-  const url = `https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&PAGE_TYPE=BlastSearch&LINK_LOC=blasthome&QUERY=${encodeURIComponent(query)}`;
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-});
-
-// ==================== ANALYZE HANDLER ===================
+// ==================== ANALYSIS STATE & OUTPUTS ===================
 const analyzeBtn = document.getElementById('analyzeBtn');
 const loadDemoBtn = document.getElementById('loadDemoBtn');
 const resultsBox = document.getElementById('results');
-const strictEl = document.getElementById('strict');
-const fullEl = document.getElementById('full');
-const primerEl = document.getElementById('primerTrim');
-const primerBlock = document.getElementById('primerResultBlock');
+const loading = document.getElementById('loading');
+const RESULT_LABELS = {
+  strict: 'high-confidence-consensus', full: 'full-merge', primerTrim: 'primer-trimmed-consensus',
+};
+const OUTPUT_KEYS = { strict: 'consensus_strict', full: 'consensus_full', primerTrim: 'primer_trim' };
 
-async function validatePrimerFile(file, label) {
-  if (file.size > MAX_INPUT_BYTES) {
-    setStatus(`Input too large (${label} primer > 5 MB).`, true);
-    alert(`The ${label} primer file "${file.name}" exceeds the 5 MB limit.`);
-    return false;
+function invalidateResults() {
+  const hadResult = runState.result !== null;
+  runState.invalidate();
+  if (hadResult) {
+    resultsBox.dataset.stale = 'true';
+    document.getElementById('staleResultNotice').hidden = false;
+    setResultActions(false);
   }
-  const text = await file.text();
-  if (!cleanAndValidateDNA(text, 10)) {
-    setStatus(`Invalid ${label} primer file.`, true);
-    alert(`Invalid ${label} primer file "${file.name}": use only A, T, G, C, N or IUPAC ambiguity codes (min 10 bases).`);
-    return false;
-  }
-  return true;
 }
 
-function setBusyState(busy) {
-  analyzeBtn.disabled = busy;
-  if (loadDemoBtn) loadDemoBtn.disabled = busy;
+function setResultActions(enabled) {
+  resultsBox.querySelectorAll('button').forEach(button => {
+    const id = button.dataset.target;
+    const report = runState.result?.outputs?.[OUTPUT_KEYS[id]] || '';
+    const hasSequence = extractCleanFasta(report).seq.length > 0;
+    button.disabled = !enabled || (id ? (button.classList.contains('copy-btn') || button.classList.contains('download-btn') ? !report : !hasSequence) : false);
+  });
+  resultsBox.querySelectorAll('.blast-link').forEach(link => {
+    const enabledForOutput = enabled && extractCleanFasta(runState.result?.outputs?.[OUTPUT_KEYS[link.dataset.target]]).seq.length > 0;
+    link.hidden = !enabledForOutput;
+  });
 }
+
+function setBusyState(next) {
+  busy = next;
+  document.querySelectorAll('#uploadSection input, #uploadSection button').forEach(el => { el.disabled = next; });
+  uploadSection.setAttribute('aria-busy', String(next));
+  if (next) setResultActions(false);
+}
+
+function fieldError(input, message) {
+  setInlineError(input.id, message);
+  input.setAttribute('aria-invalid', 'true');
+  input.focus();
+  setStatus(message, true);
+  throw new Error(message);
+}
+
+async function readPrimer(target) {
+  const input = document.getElementById(`primer${target}-${isPrimerFileMode(target) ? 'file' : 'text'}`);
+  const file = isPrimerFileMode(target) ? input.files[0] : null;
+  const raw = file ? await (async () => {
+    if (file.size > MAX_INPUT_BYTES) fieldError(input, 'Primer files must be no larger than 5 MB.');
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()); }
+    catch { fieldError(input, 'Primer file must contain valid UTF-8 text.'); }
+  })() : (isPrimerFileMode(target) ? '' : input.value);
+  if (!raw.trim()) {
+    if (file) fieldError(input, 'Primer file is empty.');
+    return null;
+  }
+  if (new TextEncoder().encode(raw).byteLength > MAX_INPUT_BYTES) fieldError(input, 'Primer input must be no larger than 5 MB.');
+  try { return normalizePrimer(raw); }
+  catch (error) { fieldError(input, `${target === 'F' ? 'Forward' : 'Reverse'} primer: ${error.message}`); }
+}
+
+function renderOutput(id, report) {
+  const fasta = extractCleanFasta(report || '');
+  document.getElementById(id).innerHTML = fasta.seq ? renderReportHtml(fasta.fasta) : '';
+  const empty = document.getElementById(`${id}Empty`);
+  empty.hidden = Boolean(fasta.seq);
+  document.getElementById(`${id}Report`).innerHTML = renderReportHtml(report || 'No report available.');
+}
+
+function renderResults(result) {
+  for (const [id, key] of Object.entries(OUTPUT_KEYS)) renderOutput(id, result.outputs[key]);
+  document.getElementById('primerResultBlock').style.display = result.outputs.primer_trim ? 'block' : 'none';
+  const notices = [...result.warnings];
+  const primerReport = result.outputs.primer_trim || '';
+  // Older APIs put unmatched-primer and fallback explanations only in report comments.
+  const primerNotes = primerReport.split(/\r?\n/).filter(line => /^#/.test(line) && /primer|anchor|fallback|not found|not detected|not match|upstream/i.test(line)).map(line => line.replace(/^#\s*/, ''));
+  const primerStatus = document.getElementById('primerOutcome');
+  const omitted = !result.request.primers.forward && !result.request.primers.reverse;
+  const outcomes = result.analysis?.primer_outcomes;
+  const outcomeText = outcomes ? ['forward', 'reverse'].map(direction => {
+    const outcome = outcomes[direction];
+    return outcome ? `${direction === 'forward' ? 'Forward' : 'Reverse'} primer: ${outcome.message || outcome.status}` : '';
+  }).filter(Boolean).join('\n') : '';
+  primerStatus.textContent = omitted ? '' : (outcomeText || primerNotes.join('\n') || 'Primers were supplied. See the full report for trimming details.');
+  primerStatus.hidden = omitted;
+  const banner = document.getElementById('server-warn');
+  banner.textContent = notices.join('\n');
+  banner.hidden = notices.length === 0;
+  document.getElementById('staleResultNotice').hidden = true;
+  resultsBox.dataset.stale = 'false';
+  resultsBox.style.display = 'block';
+  setResultActions(true);
+}
+
+// Every analysis input invalidates a completed result, including paste/file mode and reset.
+uploadSection.addEventListener('input', event => {
+  if (event.target.matches('input')) {
+    event.target.removeAttribute('aria-invalid');
+    setInlineError(event.target.id, null);
+    invalidateResults();
+  }
+});
+uploadSection.addEventListener('change', event => { if (event.target.matches('input')) invalidateResults(); });
 
 analyzeBtn.addEventListener('click', async () => {
-  setBusyState(true);
+  if (busy) return;
   setStatus('');
+  setBusyState(true);
+  // Lock throughout asynchronous validation; field errors receive focus after unlock.
   const fF = document.getElementById('fileF').files[0];
   const fR = document.getElementById('fileR').files[0];
-  const loading = document.getElementById('loading');
-
-  // Respect active primer input mode so hidden text never overrides a chosen file
-  let pF = null, pR = null;
-  if (isPrimerFileMode('F')) {
-    pF = document.getElementById('primerF-file').files[0] || null;
-  } else {
-    const rawF = document.getElementById('primerF-text').value;
-    if (rawF.length > MAX_INPUT_BYTES) {
-      setStatus('Input too large.', true);
-      alert('Files or input text are too large, max 5 MB (or 5M characters) per input.');
-      setBusyState(false);
-      return;
-    }
-    if (rawF.trim() !== '') {
-      const cleaned = cleanAndValidateDNA(rawF, 10);
-      if (!cleaned) {
-        setStatus('Invalid forward primer sequence.', true);
-        alert('Invalid Forward primer: use only A, T, G, C, N or IUPAC ambiguity codes (min 10 bases).');
-        setBusyState(false);
-        return;
-      }
-      pF = cleaned;
-      document.getElementById('primerF-text').value = cleaned;
-    }
-  }
-
-  if (isPrimerFileMode('R')) {
-    pR = document.getElementById('primerR-file').files[0] || null;
-  } else {
-    const rawR = document.getElementById('primerR-text').value;
-    if (rawR.length > MAX_INPUT_BYTES) {
-      setStatus('Input too large.', true);
-      alert('Files or input text are too large, max 5 MB (or 5M characters) per input.');
-      setBusyState(false);
-      return;
-    }
-    if (rawR.trim() !== '') {
-      const cleaned = cleanAndValidateDNA(rawR, 10);
-      if (!cleaned) {
-        setStatus('Invalid reverse primer sequence.', true);
-        alert('Invalid Reverse primer: use only A, T, G, C, N or IUPAC ambiguity codes (min 10 bases).');
-        setBusyState(false);
-        return;
-      }
-      pR = cleaned;
-      document.getElementById('primerR-text').value = cleaned;
-    }
-  }
-
-  if (!fF || !fR) {
-    setStatus('Please provide both .ab1 files.', true);
-    alert('Please upload both forward and reverse .ab1 files.');
-    setBusyState(false);
-    return;
-  }
-  if (!AB1_RE.test(fF.name) || !AB1_RE.test(fR.name)) {
-    setStatus('Reads must be .ab1 chromatogram files.', true);
-    alert('Both reads must be .ab1 files (check you did not swap in another format).');
-    setBusyState(false);
-    return;
-  }
-  if (fF.size > MAX_INPUT_BYTES || fR.size > MAX_INPUT_BYTES) {
-    setStatus('Input too large.', true);
-    alert('Files or input text are too large, max 5 MB (or 5M characters) per input.');
-    setBusyState(false);
-    return;
-  }
-  if (pF instanceof File && !(await validatePrimerFile(pF, 'forward'))) {
-    setBusyState(false);
-    return;
-  }
-  if (pR instanceof File && !(await validatePrimerFile(pR, 'reverse'))) {
-    setBusyState(false);
-    return;
-  }
-
-  const mott = clampNumericInput(mottInput, 0.1);
-  const mphred = Math.round(clampNumericInput(qPhredInput, 20));
-  const secPeak = Math.round(clampNumericInput(secPeakInput, 33));
-  mottInput.value = mott;
-  qPhredInput.value = mphred;
-  secPeakInput.value = secPeak;
-  saveSettings();
-
-  loading.style.display = 'block';
-  primerEl.scrollTop = 0;
-  strictEl.scrollTop = 0;
-  fullEl.scrollTop = 0;
-  primerBlock.style.display = 'none';
-  resultsBox.style.display = 'none';
-  if (summaryCard) summaryCard.style.display = 'none';
-  document.getElementById('server-warn')?.remove();
-  primerEl.textContent = '—';
-  strictEl.textContent = '—';
-  fullEl.textContent = '—';
-  setStatus('Analyzing…');
-
-  const form = new FormData();
-  form.append('fileF', fF);
-  form.append('fileR', fR);
-  if (pF) form.append('primerF', pF);
-  if (pR) form.append('primerR', pR);
-  form.append('mottCutoff', String(mott));
-  form.append('minPhred', String(mphred));
-  form.append('secondary_peak_threshold', String(secPeak));
-
+  let requestId;
   let timeoutId;
   try {
+    for (const [id, file] of [['fileF', fF], ['fileR', fR]]) {
+      const input = document.getElementById(id);
+      if (!file) fieldError(input, 'Please select both Forward and Reverse .ab1 files.');
+      if (!AB1_RE.test(file.name)) fieldError(input, 'Reads must be .ab1 chromatogram files.');
+      if (file.size > MAX_INPUT_BYTES) fieldError(input, 'Chromatogram files must be no larger than 5 MB.');
+      const magic = new TextDecoder().decode(await file.slice(0, 4).arrayBuffer());
+      if (magic !== 'ABIF') fieldError(input, 'The file is missing its ABIF chromatogram signature.');
+    }
+    const pF = await readPrimer('F');
+    const pR = await readPrimer('R');
+    const settings = {
+      mottCutoff: clampNumericInput(mottInput, 0.1),
+      minPhred: Math.round(clampNumericInput(qPhredInput, 20)),
+      secondary_peak_threshold: Math.round(clampNumericInput(secPeakInput, 33)),
+    };
+    mottInput.value = settings.mottCutoff;
+    qPhredInput.value = settings.minPhred;
+    secPeakInput.value = settings.secondary_peak_threshold;
+    saveSettings();
+    const request = {
+      files: { forward: fF, reverse: fR },
+      filenames: { forward: fF.name, reverse: fR.name },
+      primers: { forward: pF, reverse: pR },
+      settings,
+    };
+    requestId = runState.begin();
+    loading.style.display = 'block';
+    resultsBox.style.display = 'none';
+    setStatus('Analyzing…');
+    const form = new FormData();
+    form.append('fileF', fF);
+    form.append('fileR', fR);
+    if (pF) form.append('primerF', pF);
+    if (pR) form.append('primerR', pR);
+    for (const [key, value] of Object.entries(settings)) form.append(key, String(value));
     const controller = new AbortController();
     timeoutId = setTimeout(() => controller.abort(), 60000);
     const resp = await fetch(BACKEND_URL, { method: 'POST', body: form, signal: controller.signal });
     if (!resp.ok) {
-      let msg = 'Server returned ' + resp.status;
-      try {
-        const errBody = await resp.json();
-        if (errBody && errBody.error) msg = errBody.error;
-      } catch { /* non-JSON error page */ }
+      let msg = `Server returned ${resp.status}. Please try again.`;
+      try { msg = (await resp.json()).error || msg; } catch { /* non-JSON server response */ }
       if (resp.status === 413) msg = 'Upload too large — the server accepts at most 20 MB per request.';
-      if (resp.status === 500) msg = 'Analysis failed on the server. Double-check your chromatogram files and try again.';
-      const e = new Error(msg);
-      e.displayMessage = msg;
-      throw e;
+      if (resp.status === 500) msg = 'Analysis failed on the server. Check your chromatograms and try again.';
+      throw new Error(msg);
     }
     const data = await resp.json();
-    const outputs = data.outputs || {};
-
-    if (Array.isArray(data.warnings) && data.warnings.length) {
-      const banner = document.createElement('div');
-      banner.id = 'server-warn';
-      banner.className = 'server-warn';
-      banner.setAttribute('role', 'alert');
-      banner.textContent = data.warnings.join('\n');
-      resultsBox.prepend(banner);
-    }
-
-    renderSeq(strictEl, outputs.consensus_strict || '—');
-    renderSeq(fullEl, outputs.consensus_full || '—');
-    if (outputs.primer_trim) {
-      renderSeq(primerEl, outputs.primer_trim);
-      primerBlock.style.display = 'block';
-    } else {
-      primerBlock.style.display = 'none';
-      primerEl.textContent = '—';
-    }
-
-    const summary = buildSummaryFromOutputs(outputs, data.summary || null);
-    renderSummaryDashboard(summary);
-
-    resultsBox.style.display = 'block';
+    if (!data.outputs || typeof data.outputs !== 'object') throw new Error('The server returned no analysis outputs. Please try again.');
+    if (!runState.complete(requestId, {
+      request, outputs: data.outputs, warnings: Array.isArray(data.warnings) ? data.warnings : [],
+      analysis: data.analysis || null,
+    })) return;
+    renderResults(runState.result);
     setStatus('Analysis complete.');
-  } catch (err) {
-    console.error(err);
-    resultsBox.style.display = 'none';
-    if (err.name === 'AbortError') {
-      setStatus('Error: the server took longer than 60 s to respond. Try again shortly.', true);
-    } else if (err instanceof TypeError) {
-      setStatus('Error: could not reach the analysis server. Check your connection or try again later.', true);
-    } else {
-      setStatus('Error: ' + (err.displayMessage || err.message || err), true);
-    }
+  } catch (error) {
+    if (requestId !== undefined && !runState.isCurrent(requestId)) return;
+    if (error.name === 'AbortError') setStatus('The server took longer than 60 seconds. Try again shortly.', true);
+    else if (error instanceof TypeError) setStatus('Could not reach the analysis server. Check your connection and try again.', true);
+    else setStatus(error.message || 'Analysis failed. Please try again.', true);
   } finally {
     clearTimeout(timeoutId);
     loading.style.display = 'none';
     setBusyState(false);
+    setResultActions(runState.isFresh());
+    const invalid = uploadSection.querySelector('[aria-invalid="true"]');
+    invalid?.focus();
   }
 });
 
-// ==================== DEMO DATA LOADER ===================
 loadDemoBtn?.addEventListener('click', async () => {
+  if (busy) return;
   setBusyState(true);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
   try {
-    const [fwdResp, revResp, pFwdResp, pRevResp] = await Promise.all([
-      fetch(`${BASE}demo/fwd_control.ab1`),
-      fetch(`${BASE}demo/rev_control.ab1`),
-      fetch(`${BASE}demo/primer_fwd.fasta`),
-      fetch(`${BASE}demo/primer_rev.fasta`),
-    ]);
-    if (!fwdResp.ok || !revResp.ok || !pFwdResp.ok || !pRevResp.ok) {
-      throw new Error('Demo assets returned non-200 status');
-    }
-    const [fwd, rev, pFwd, pRev] = await Promise.all([
-      fwdResp.blob(),
-      revResp.blob(),
-      pFwdResp.text(),
-      pRevResp.text(),
-    ]);
-
-    setInputFile(document.getElementById('fileF'), new File([fwd], 'fwd_control.ab1', { type: 'application/octet-stream' }));
-    setInputFile(document.getElementById('fileR'), new File([rev], 'rev_control.ab1', { type: 'application/octet-stream' }));
+    const responses = await Promise.all(['fwd_control.ab1', 'rev_control.ab1', 'primer_fwd.fasta', 'primer_rev.fasta'].map(name => fetch(`${BASE}demo/${name}`, { signal: controller.signal })));
+    if (responses.some(resp => !resp.ok)) throw new Error('Demo files are unavailable.');
+    const payloads = await Promise.all(responses.map(response => response.arrayBuffer()));
+    if (payloads.some(buffer => buffer.byteLength > MAX_INPUT_BYTES)) throw new Error('Demo input exceeds the 5 MB limit.');
+    // Prepare every payload before changing the current files, primer modes or traces.
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    const pFwd = normalizePrimer(decoder.decode(payloads[2]));
+    const pRev = normalizePrimer(decoder.decode(payloads[3]));
+    parseABIF(payloads[0]);
+    parseABIF(payloads[1]);
+    const fwd = new File([payloads[0]], 'fwd_control.ab1', { type: 'application/octet-stream' });
+    const rev = new File([payloads[1]], 'rev_control.ab1', { type: 'application/octet-stream' });
+    invalidateResults();
+    setInputFile(document.getElementById('fileF'), fwd);
+    setInputFile(document.getElementById('fileR'), rev);
+    setPrimerMode('F', 'text');
+    setPrimerMode('R', 'text');
+    document.getElementById('primerF-text').value = pFwd;
+    document.getElementById('primerR-text').value = pRev;
     await validateAb1Field('fileF', 'F', false);
     await validateAb1Field('fileR', 'R', false);
     await refreshTraces();
-
-    // Ensure primer inputs are in text mode before populating demo primers
-    setPrimerMode('F', 'text');
-    setPrimerMode('R', 'text');
-    const pFwdClean = cleanAndValidateDNA(pFwd, 10);
-    const pRevClean = cleanAndValidateDNA(pRev, 10);
-    if (pFwdClean) document.getElementById('primerF-text').value = pFwdClean;
-    if (pRevClean) document.getElementById('primerR-text').value = pRevClean;
-
     setStatus('Demo dataset loaded (cane toad tyrosinase control). Press Analyze.');
-  } catch (err) {
-    console.error(err);
-    setStatus('Could not load demo files.', true);
+  } catch (error) {
+    setStatus(error.name === 'AbortError'
+      ? 'Demo files took longer than 60 seconds to load. Try again shortly.'
+      : 'Could not load demo files. Check your connection and try again.', true);
   } finally {
+    clearTimeout(timeoutId);
+    controller.abort();
     setBusyState(false);
+    setResultActions(runState.isFresh());
   }
 });
 
-// ==================== COPY & DOWNLOAD CONTROLS ===================
-const RESULT_LABELS = {
-  strict: 'high-confidence-consensus',
-  full: 'full-merge',
-  primerTrim: 'primer-trimmed-consensus',
-};
+function getSampleSlug() { return sampleSlug(runState.result?.request.filenames.forward || 'sample'); }
 
-function getSampleSlug() {
-  return (document.getElementById('fileF').files[0]?.name || 'sample')
-    .replace(/\.ab1$/i, '')
-    .replace(/[^\w.-]+/g, '_');
-}
+const copyTimers = new WeakMap();
 
-function flashCopied(btn, textToCopy) {
-  const originalHTML = btn.dataset.origHtml || btn.innerHTML;
-  btn.dataset.origHtml = originalHTML;
-  navigator.clipboard.writeText(textToCopy).then(() => {
+async function flashCopied(btn, text) {
+  const original = btn.dataset.origHtml || btn.innerHTML;
+  btn.dataset.origHtml = original;
+  try {
+    if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+    await navigator.clipboard.writeText(text);
+    clearTimeout(copyTimers.get(btn));
     btn.textContent = 'Copied!';
-    setTimeout(() => { btn.innerHTML = originalHTML; }, 1200);
-  }).catch((err) => {
-    console.error('Failed to copy: ', err);
-  });
+    copyTimers.set(btn, setTimeout(() => {
+      btn.innerHTML = original;
+      copyTimers.delete(btn);
+    }, 1200));
+  } catch { setStatus('Could not copy to the clipboard. Use Download FASTA or Download Report instead.', true); }
 }
 
 function triggerTextDownload(content, filename) {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
   const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Clean FASTA Copy / Download (strict >Header + sequence only — BLAST/SnapGene ready)
-document.querySelectorAll('.copy-fasta-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+for (const [selector, clean, download] of [
+  ['.copy-fasta-btn', true, false], ['.download-fasta-btn', true, true],
+  ['.copy-btn', false, false], ['.download-btn', false, true],
+]) {
+  document.querySelectorAll(selector).forEach(btn => btn.addEventListener('click', () => {
+    if (!runState.isFresh() || busy) return;
     const id = btn.dataset.target;
-    const raw = document.getElementById(id)?.innerText.trim() || '';
-    const { fasta } = extractCleanFasta(raw, `${getSampleSlug()}_${RESULT_LABELS[id] ?? id}`);
-    if (!fasta) {
-      setStatus('No sequence available in this block to copy as FASTA.', true);
-      return;
-    }
-    flashCopied(btn, fasta);
-  });
-});
+    const report = runState.result.outputs[OUTPUT_KEYS[id]] || '';
+    const content = clean ? extractCleanFasta(report).fasta : report;
+    if (!content) return;
+    if (download) triggerTextDownload(content, `SangerAnalyst-${getSampleSlug()}-${RESULT_LABELS[id]}.${clean ? 'fasta' : 'txt'}`);
+    else flashCopied(btn, content);
+  }));
+}
 
-document.querySelectorAll('.download-fasta-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const id = btn.dataset.target;
-    const raw = document.getElementById(id)?.innerText.trim() || '';
-    const sample = getSampleSlug();
-    const { fasta } = extractCleanFasta(raw, `${sample}_${RESULT_LABELS[id] ?? id}`);
-    if (!fasta) {
-      setStatus('No sequence available in this block to download as FASTA.', true);
-      return;
-    }
-    triggerTextDownload(fasta, `SangerAnalyst-${sample}-${RESULT_LABELS[id] ?? id}.fasta`);
-  });
-});
-
-// Full Report Copy / Download (.txt)
-document.querySelectorAll('.copy-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const id = btn.dataset.target;
-    const text = document.getElementById(id)?.innerText.trim() || '';
-    if (!text || text === '—' || text === '-') return;
-    flashCopied(btn, text);
-  });
-});
-
-document.querySelectorAll('.download-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const id = btn.dataset.target;
-    const content = document.getElementById(id)?.innerText.trim() || '';
-    if (!content || content === '—' || content === '-') return;
-    const sample = getSampleSlug();
-    triggerTextDownload(content, `SangerAnalyst-${sample}-${RESULT_LABELS[id] ?? id}.txt`);
-  });
+document.getElementById('downloadAnalysisBtn').addEventListener('click', async () => {
+  if (!runState.isFresh() || busy) return;
+  const result = runState.result;
+  try {
+    const metadata = await createAnalysisExport(result, extractCleanFasta);
+    if (runState.result !== result || !runState.isFresh()) return;
+    triggerTextDownload(JSON.stringify(metadata, null, 2) + '\n', `SangerAnalyst-${sampleSlug(result.request.filenames.forward)}-analysis.json`);
+  } catch { setStatus('Could not create analysis details. Your FASTA and report downloads are still available.', true); }
 });
 
 // ==================== MODALS (FEEDBACK, SUPPORT, DANA QR) ===================
