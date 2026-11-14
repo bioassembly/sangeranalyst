@@ -8,11 +8,11 @@ const BACKEND_URL = ['localhost', '127.0.0.1'].includes(window.location.hostname
 import { attachTraceViewer, parseABIF } from './traceviewer.js';
 import {
   extractCleanFasta,
-  renderReportHtml,
   classifyAb1Pair,
   normalizePrimer,
 } from './sequtils.js';
-import { createRunState, sampleSlug, createAnalysisExport } from './runstate.js';
+import { createRunState, sampleSlug } from './runstate.js';
+import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, outputConflictSites, renderSecondaryPeaksHtml, primerWarnings } from './results.js';
 
 const runState = createRunState();
 let busy = false;
@@ -176,7 +176,7 @@ const traceViewer = attachTraceViewer({
 
 });
 
-// Sync initial and live Mott / Secondary-peak parameters with the trace preview
+// Sync initial and live Mott / Secondary-peak parameters with input chromatograms
 traceViewer.setMottCutoff(clampNumericInput(mottInput, 0.1));
 traceViewer.setSecPeakThreshold(clampNumericInput(secPeakInput, 33));
 
@@ -249,26 +249,30 @@ async function refreshTraces() {
     warn.style.display = 'none';
   }
   if (notes.length) {
-    traceMeta.textContent = (traceMeta.textContent ? traceMeta.textContent + ' · ' : '') + notes.join(' · ');
+    traceMeta.textContent = (traceMeta.textContent ? traceMeta.textContent + '. ' : '') + notes.join('. ');
   }
 }
 
 async function validateAb1Field(inputId, which, triggerRefresh = true) {
   invalidateResults();
-  const file = document.getElementById(inputId).files[0];
-  traceFiles[which] = file || null;
+  const input = document.getElementById(inputId);
+  const file = input.files[0];
+  let validFile = null;
   setInlineError(inputId, null);
   if (file) {
     if (file.size > MAX_INPUT_BYTES) {
       setInlineError(inputId, 'File is larger than 5 MB.');
     } else {
       const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
-      const magic = String.fromCharCode(...head);
-      if (magic !== 'ABIF') {
+      if (input.files[0] !== file) return;
+      if (String.fromCharCode(...head) !== 'ABIF') {
         setInlineError(inputId, 'This does not look like an ABIF chromatogram (missing ABIF signature).');
+      } else {
+        validFile = file;
       }
     }
   }
+  traceFiles[which] = validFile;
   if (triggerRefresh) await refreshTraces();
 }
 
@@ -380,10 +384,43 @@ const RESULT_LABELS = {
   strict: 'high-confidence-consensus', full: 'full-merge', primerTrim: 'primer-trimmed-consensus',
 };
 const OUTPUT_KEYS = { strict: 'consensus_strict', full: 'consensus_full', primerTrim: 'primer_trim' };
+const resultTabs = [...resultsBox.querySelectorAll('[role="tab"]')];
+const conflictViews = new Map();
+let traceReturnTarget = null;
+
+function selectResultTab(id, focus = false) {
+  const chosen = resultTabs.find(tab => tab.dataset.output === id && !tab.hidden);
+  if (!chosen) return;
+  for (const tab of resultTabs) {
+    const selected = tab === chosen;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    document.getElementById(tab.getAttribute('aria-controls')).hidden = !selected;
+  }
+  if (focus) chosen.focus();
+}
+
+for (const tab of resultTabs) {
+  tab.addEventListener('click', () => selectResultTab(tab.dataset.output));
+  tab.addEventListener('keydown', event => {
+    const tabs = resultTabs.filter(item => !item.hidden);
+    const index = tabs.indexOf(tab);
+    const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+      : event.key === 'ArrowLeft' ? (index - 1 + tabs.length) % tabs.length
+      : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+    if (next === null) return;
+    event.preventDefault();
+    selectResultTab(tabs[next].dataset.output, true);
+  });
+}
+
 
 function invalidateResults() {
   const hadResult = runState.result !== null;
   runState.invalidate();
+  traceViewer.clearFocus();
+  document.getElementById('traceReview').hidden = true;
+  traceReturnTarget = null;
   if (hadResult) {
     resultsBox.dataset.stale = 'true';
     document.getElementById('staleResultNotice').hidden = false;
@@ -392,15 +429,14 @@ function invalidateResults() {
 }
 
 function setResultActions(enabled) {
-  resultsBox.querySelectorAll('button').forEach(button => {
+  resultsBox.querySelectorAll('.result-controls button').forEach(button => {
     const id = button.dataset.target;
     const report = runState.result?.outputs?.[OUTPUT_KEYS[id]] || '';
     const hasSequence = extractCleanFasta(report).seq.length > 0;
     button.disabled = !enabled || (id ? (button.classList.contains('copy-btn') || button.classList.contains('download-btn') ? !report : !hasSequence) : false);
   });
-  resultsBox.querySelectorAll('.blast-link').forEach(link => {
-    const enabledForOutput = enabled && extractCleanFasta(runState.result?.outputs?.[OUTPUT_KEYS[link.dataset.target]]).seq.length > 0;
-    link.hidden = !enabledForOutput;
+  resultsBox.querySelectorAll('.conflict-base, [data-conflict-action]').forEach(button => {
+    button.disabled = !enabled;
   });
 }
 
@@ -436,33 +472,119 @@ async function readPrimer(target) {
   catch (error) { fieldError(input, `${target === 'F' ? 'Forward' : 'Reverse'} primer: ${error.message}`); }
 }
 
-function renderOutput(id, report) {
+function renderOutput(id, report, alignmentReport = report) {
   const fasta = extractCleanFasta(report || '');
-  document.getElementById(id).innerHTML = fasta.seq ? renderReportHtml(fasta.fasta) : '';
-  const empty = document.getElementById(`${id}Empty`);
-  empty.hidden = Boolean(fasta.seq);
-  document.getElementById(`${id}Report`).innerHTML = renderReportHtml(report || 'No report available.');
+  const conflicts = outputConflictSites(report, runState.result.outputs.consensus_full, id === 'primerTrim');
+  const orientation = runState.result.orientation;
+  for (const site of conflicts.rows) site.reverseComplemented = ['revcomp', 'reverse'].includes(orientation)
+    ? true : ['raw', 'complement'].includes(orientation) ? false : null;
+  conflictViews.set(id, { ...conflicts, selected: 0 });
+  const seqEl = document.getElementById(id);
+  seqEl.innerHTML = fasta.seq ? renderConsensusHtml(fasta.fasta, conflicts.rows) : '';
+  seqEl.hidden = !fasta.seq;
+  document.getElementById(`${id}Empty`).hidden = Boolean(fasta.seq);
+  const alignment = extractReadAlignment(alignmentReport);
+  document.getElementById(`${id}Report`).innerHTML = alignment.text
+    ? renderAlignmentHtml(alignment.text, conflicts.rows)
+    : 'No read alignment was returned for this output. Review the downloadable report and analysis warnings.';
+  document.getElementById(`${id}AlignmentStats`).innerHTML = renderAlignmentStats(alignment);
+  renderConflictControls(id);
 }
 
+function renderConflictControls(id) {
+  const view = conflictViews.get(id);
+  const container = document.getElementById(`${id}Conflicts`);
+  if (!view.rows.length) {
+    container.innerHTML = `<p>${view.available ? 'No conflicting bases in the shared read overlap.' : 'Trace navigation is unavailable for this report.'}</p>`;
+    return;
+  }
+  const site = view.rows[view.selected];
+  container.innerHTML = `<div class="conflict-toolbar">
+    <div class="conflict-description" role="status"><strong>Conflict ${view.selected + 1} of ${view.rows.length}</strong><br>Consensus base ${site.position}: ${site.forwardBase} / ${site.reverseBase} → ${site.consensusBase}</div>
+    <div class="conflict-navigation" aria-label="Conflict navigation">
+      <button type="button" class="result-btn" data-conflict-action="previous" aria-label="Previous conflict">← Previous</button>
+      <button type="button" class="result-btn" data-conflict-action="next" aria-label="Next conflict">Next →</button>
+      <button type="button" class="result-btn" data-conflict-action="inspect">View chromatograms ↑</button>
+    </div>
+  </div><p class="conflict-hint">Select an underlined base to inspect its traces. Single-read ends are excluded from conflict review.</p>`;
+  for (const el of resultsBox.querySelectorAll(`[data-output-panel="${id}"] .conflict-base`)) {
+    el.classList.toggle('is-selected', Number(el.dataset.conflictIndex) === view.selected);
+  }
+}
+
+function inspectConflict(id, index, source) {
+  if (busy || !runState.isFresh()) return;
+  const view = conflictViews.get(id);
+  const site = view?.rows[index];
+  if (!site) return;
+  const focused = traceViewer.focusPositions({ forward: site.forwardPosition, reverse: site.reversePosition }, site.reverseComplemented);
+  if (!focused) {
+    setStatus('Could not locate this conflict in the loaded chromatograms. Review its read positions in the downloaded report.', true);
+    return;
+  }
+  view.selected = index;
+  renderConflictControls(id);
+  const label = resultTabs.find(tab => tab.dataset.output === id).textContent;
+  const positions = [focused.forward && `Forward .ab1 base ${focused.forward}`, focused.reverse && `Reverse .ab1 base ${focused.reverse}`].filter(Boolean).join('; ');
+  document.getElementById('traceReviewLabel').textContent = `${label}, consensus base ${site.position}. ${positions}. Selected bases are outlined in blue.`;
+  const panel = document.querySelector(`[data-output-panel="${id}"]`);
+  traceReturnTarget = { id, element: source?.isConnected ? source : panel.querySelector('[data-conflict-action="inspect"]') };
+  const review = document.getElementById('traceReview');
+  review.hidden = false;
+  review.focus({ preventScroll: true });
+  traceSection.scrollIntoView({ block: 'start', behavior: 'instant' });
+}
+
+resultsBox.addEventListener('click', event => {
+  const button = event.target.closest('.conflict-base, [data-conflict-action]');
+  if (!button || busy || !runState.isFresh()) return;
+  const id = button.closest('[data-output-panel]')?.dataset.outputPanel;
+  const view = conflictViews.get(id);
+  if (!view?.rows.length) return;
+  if (button.dataset.conflictIndex !== undefined) {
+    inspectConflict(id, Number(button.dataset.conflictIndex), button);
+  } else if (button.dataset.conflictAction === 'inspect') {
+    inspectConflict(id, view.selected, button);
+  } else {
+    const action = button.dataset.conflictAction;
+    view.selected = (view.selected + (action === 'next' ? 1 : -1) + view.rows.length) % view.rows.length;
+    renderConflictControls(id);
+    document.getElementById(`${id}Conflicts`).querySelector(`[data-conflict-action="${action}"]`).focus();
+    const base = document.querySelector(`[data-output-panel="${id}"] .alignment-output .conflict-base[data-conflict-index="${view.selected}"]`);
+    base?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  }
+});
+
+document.getElementById('returnToResult').addEventListener('click', () => {
+  if (!traceReturnTarget || !runState.isFresh()) return;
+  selectResultTab(traceReturnTarget.id);
+  const target = traceReturnTarget.element;
+  target?.focus({ preventScroll: true });
+  target?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+});
+
+document.getElementById('traceReset').addEventListener('click', () => {
+  document.getElementById('traceReview').hidden = true;
+  traceReturnTarget = null;
+});
+
 function renderResults(result) {
-  for (const [id, key] of Object.entries(OUTPUT_KEYS)) renderOutput(id, result.outputs[key]);
-  document.getElementById('primerResultBlock').style.display = result.outputs.primer_trim ? 'block' : 'none';
-  const notices = [...result.warnings];
-  const primerReport = result.outputs.primer_trim || '';
-  // Older APIs put unmatched-primer and fallback explanations only in report comments.
-  const primerNotes = primerReport.split(/\r?\n/).filter(line => /^#/.test(line) && /primer|anchor|fallback|not found|not detected|not match|upstream/i.test(line)).map(line => line.replace(/^#\s*/, ''));
+  for (const [id, key] of Object.entries(OUTPUT_KEYS)) {
+    // Primer reports contain primer/consensus matches, not a paired-read
+    // alignment. Show the full assembly alignment with an explicit coordinate note.
+    renderOutput(id, result.outputs[key], id === 'primerTrim' ? result.outputs.consensus_full : result.outputs[key]);
+  }
+  document.getElementById('sharedPeaks').innerHTML = renderSecondaryPeaksHtml(result.outputs.consensus_full);
+  document.getElementById('peakThreshold').textContent = `Secondary peak threshold: ${result.request.settings.secondary_peak_threshold}% of the primary peak height.`;
+  document.getElementById('primerTrimTab').hidden = !result.outputs.primer_trim;
+  selectResultTab('strict');
   const primerStatus = document.getElementById('primerOutcome');
-  const omitted = !result.request.primers.forward && !result.request.primers.reverse;
-  const outcomes = result.analysis?.primer_outcomes;
-  const outcomeText = outcomes ? ['forward', 'reverse'].map(direction => {
-    const outcome = outcomes[direction];
-    return outcome ? `${direction === 'forward' ? 'Forward' : 'Reverse'} primer: ${outcome.message || outcome.status}` : '';
-  }).filter(Boolean).join('\n') : '';
-  primerStatus.textContent = omitted ? '' : (outcomeText || primerNotes.join('\n') || 'Primers were supplied. See the full report for trimming details.');
-  primerStatus.hidden = omitted;
+  const notes = primerWarnings(result);
+  primerStatus.textContent = notes.join('\n');
+  primerStatus.hidden = notes.length === 0;
   const banner = document.getElementById('server-warn');
-  banner.textContent = notices.join('\n');
-  banner.hidden = notices.length === 0;
+  banner.textContent = result.warnings.join('\n');
+  banner.hidden = result.warnings.length === 0;
   document.getElementById('staleResultNotice').hidden = true;
   resultsBox.dataset.stale = 'false';
   resultsBox.style.display = 'block';
@@ -539,6 +661,7 @@ analyzeBtn.addEventListener('click', async () => {
     if (!runState.complete(requestId, {
       request, outputs: data.outputs, warnings: Array.isArray(data.warnings) ? data.warnings : [],
       analysis: data.analysis || null,
+      orientation: data.summary?.orientation || null,
     })) return;
     renderResults(runState.result);
     setStatus('Analysis complete.');
@@ -640,15 +763,22 @@ for (const [selector, clean, download] of [
   }));
 }
 
-document.getElementById('downloadAnalysisBtn').addEventListener('click', async () => {
+document.querySelectorAll('.blast-btn').forEach(button => button.addEventListener('click', async () => {
   if (!runState.isFresh() || busy) return;
-  const result = runState.result;
+  const id = button.dataset.target;
+  const { fasta, seq } = extractCleanFasta(runState.result.outputs[OUTPUT_KEYS[id]]);
+  if (!seq) return;
+  // Open on the user's click, before awaiting clipboard permission, so browsers
+  // do not treat the new tab as an unsolicited popup. No sequence is submitted.
+  window.open('https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&PAGE_TYPE=BlastSearch', '_blank', 'noopener,noreferrer');
+  const status = document.getElementById(`${id}BlastStatus`);
   try {
-    const metadata = await createAnalysisExport(result, extractCleanFasta);
-    if (runState.result !== result || !runState.isFresh()) return;
-    triggerTextDownload(JSON.stringify(metadata, null, 2) + '\n', `SangerAnalyst-${sampleSlug(result.request.filenames.forward)}-analysis.json`);
-  } catch { setStatus('Could not create analysis details. Your FASTA and report downloads are still available.', true); }
-});
+    await navigator.clipboard.writeText(fasta);
+    status.textContent = 'FASTA copied. Paste it into the NCBI BLAST query field.';
+  } catch {
+    status.textContent = 'NCBI BLAST opened. Clipboard access was unavailable; download the FASTA and upload it there.';
+  }
+}));
 
 // ==================== MODALS (FEEDBACK, SUPPORT, DANA QR) ===================
 const reportLink = document.getElementById('reportLink');

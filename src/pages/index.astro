@@ -2,6 +2,11 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 const b = import.meta.env.BASE_URL.replace(/\/$/, '');
+const baseCodes = [
+  ['R', 'A / G'], ['Y', 'C / T'], ['S', 'G / C'], ['W', 'A / T'],
+  ['K', 'G / T'], ['M', 'A / C'], ['B', 'C / G / T'],
+  ['D', 'A / G / T'], ['H', 'A / C / T'], ['V', 'A / C / G'], ['N', 'Any base'],
+];
 ---
 
 <BaseLayout>
@@ -71,7 +76,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
               <button class="info-btn" id="mottInfoBtn" type="button" aria-label="Mott cutoff info" aria-expanded="false" aria-controls="m_tooltip">ℹ️</button>
             </div>
             <div class="small">
-              Lower values remove more low-quality bases (shaded live on trace preview).
+              Lower values remove more low-quality bases (shaded on the chromatograms).
             </div>
           </div>
 
@@ -96,7 +101,7 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
             <button class="info-btn" id="secPeakInfoBtn" type="button" aria-label="Secondary peak info" aria-expanded="false" aria-controls="sec_tooltip">ℹ️</button>
           </div>
           <div class="small">
-            Secondary peaks reaching this percentage of the primary peak’s height are marked (<span style="color:#d97706">◆</span>) and call corroborated heterozygotes as IUPAC codes (R, Y, …).
+            Secondary peaks reaching this percentage of the primary peak’s height are marked (<span style="color:#d97706">◆</span>). Corroborated mixed bases use IUPAC codes: R (A/G), Y (C/T), S (G/C), W (A/T), K (G/T) and M (A/C).
           </div>
         </div>
 
@@ -115,13 +120,17 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
       <div class="trace-section" id="traceSection" style="display:none">
         <div class="trace-head">
           <div class="trace-title-group">
-            <div class="trace-title">Chromatogram preview</div>
+            <div class="trace-title">Input chromatograms</div>
           </div>
           <div class="trace-controls">
             <button class="trace-btn" id="traceZoomOut" type="button" aria-label="Zoom out">−</button>
             <button class="trace-btn" id="traceZoomIn" type="button" aria-label="Zoom in">+</button>
             <button class="trace-btn" id="traceReset" type="button" aria-label="Reset view">Reset</button>
           </div>
+        </div>
+        <div id="traceReview" class="trace-review" tabindex="-1" hidden>
+          <p id="traceReviewLabel" role="status"></p>
+          <button id="returnToResult" class="trace-btn" type="button">Back to result ↓</button>
         </div>
         <div class="trace-body">
           <div class="trace-stack">
@@ -145,136 +154,201 @@ const b = import.meta.env.BASE_URL.replace(/\/$/, '');
         <div id="traceWarn" class="trace-warn" style="display:none" role="alert"></div>
         <div class="small trace-meta">
           <span id="traceMeta"></span>
-          <span>Preview alignment can differ from the final assembly.</span>
+          <span>Input read traces. Analyze to generate the final sequence and alignment below.</span>
           <span class="trace-legend">
             <span style="color:#16a34a">A</span>
             <span style="color:#2563eb">C</span>
             <span style="color:#111827">G</span>
             <span style="color:#dc2626">T</span>
-            · <span style="color:#d97706">◆</span> 2° peak · shaded = Mott trim · scroll to zoom, drag to pan
+            <span class="trace-legend-item"><span style="color:#d97706">◆</span> Secondary peak</span>
+            <span class="trace-legend-item">Shading: Mott trim</span>
+            <span class="trace-legend-item">Each read auto-fits its visible peak height</span>
+            <span class="trace-legend-item">Scroll to zoom, drag to pan</span>
           </span>
         </div>
       </div>
 
-      <div class="result-section" id="results" aria-live="polite" style="display:none">
-        <p id="staleResultNotice" role="status" hidden>Inputs changed. Run Analyze again to update these results before exporting.</p>
+      <div class="result-section" id="results" style="display:none">
+        <h3 class="results-heading">Analysis results</h3>
+        <p class="result-tabs-hint">Choose an output to view its sequence and alignment. Double-peak detection is shared below.</p>
+        <p id="staleResultNotice" role="status" hidden>Inputs changed. Run Analyze again to update these results before exporting or inspecting traces.</p>
         <div id="server-warn" class="server-warn" role="alert" hidden></div>
         <p id="primerOutcome" class="small" style="white-space:pre-line" hidden></p>
-        <button class="result-btn" id="downloadAnalysisBtn" type="button">Download analysis details (.json)</button>
-        <div class="result-block">
-          <div class="result-title">High Confidence Consensus</div>
+        <div class="result-tabs" role="tablist" aria-label="Consensus outputs">
+          <button id="strictTab" class="result-tab" role="tab" aria-selected="true" aria-controls="strictPanel" data-output="strict" type="button">High confidence</button>
+          <button id="fullTab" class="result-tab" role="tab" aria-selected="false" aria-controls="fullPanel" data-output="full" tabindex="-1" type="button">Full merge</button>
+          <button id="primerTrimTab" class="result-tab" role="tab" aria-selected="false" aria-controls="primerResultBlock" data-output="primerTrim" tabindex="-1" type="button" hidden>Primer trimmed</button>
+        </div>
+        <div id="strictPanel" class="result-block" data-output-panel="strict" role="tabpanel" aria-labelledby="strictTab" tabindex="0">
+          <h4 class="result-title">High-confidence consensus</h4>
           <p class="result-hint">Sequence from the statistically validated overlapping region of both reads.</p>
-          <div class="result-controls">
-            <button class="result-btn result-btn-primary copy-fasta-btn" data-target="strict" type="button">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <rect x="9" y="9" width="13" height="13" rx="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
-              Copy FASTA
-            </button>
-            <button class="result-btn result-btn-primary download-fasta-btn" data-target="strict" type="button">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <path d="M7 10l5 5 5-5"/>
-                <path d="M12 15V3"/>
-              </svg>
-              Download .fasta
-            </button>
-
-          </div>
-          <p id="strictEmpty" class="small" hidden>No validated overlapping sequence is available. Read the warnings and full report before using the full merge.</p>
-          <pre id="strict"></pre>
-          <p class="small"><a class="blast-link" data-target="strict" href="https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&amp;PAGE_TYPE=BlastSearch" target="_blank" rel="noopener noreferrer">NCBI BLASTn ↗</a> — copy this output's FASTA and paste it into BLAST.</p>
-          <details class="report-details">
-            <summary>Full report</summary>
+          <div class="sequence-toolbar">
+            <span class="output-label">Consensus sequence (FASTA)</span>
             <div class="result-controls">
-            <button class="result-btn copy-btn" data-target="strict" type="button">
-              Copy Report
-            </button>
-            <button class="result-btn download-btn" data-target="strict" type="button">
-              Download Report (.txt)
-            </button>
+              <button class="result-btn result-btn-primary copy-fasta-btn" data-target="strict" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy FASTA
+              </button>
+              <button class="result-btn result-btn-primary download-fasta-btn" data-target="strict" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <path d="M7 10l5 5 5-5"/>
+                  <path d="M12 15V3"/>
+                </svg>
+                Download .fasta
+              </button>
+              <button class="result-btn blast-btn" data-target="strict" type="button" title="Copy this FASTA and open NCBI BLASTn in a new tab">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>
+                NCBI BLASTn
+              </button>
             </div>
-            <pre id="strictReport"></pre>
-          </details>
+          </div>
+          <p id="strictEmpty" class="small" hidden>No validated overlapping sequence is available. Review the warnings and download the report before using the full merge.</p>
+          <pre id="strict" class="sequence-output" aria-label="High-confidence consensus FASTA" tabindex="0"></pre>
+          <div class="sequence-footer">
+            <span class="small">Sequence direction: 5′ → 3′</span>
+            <details class="base-code-key">
+              <summary>IUPAC base codes</summary>
+              <dl>{baseCodes.map(([code, bases]) => <div><dt>{code}</dt><dd>{bases}</dd></div>)}</dl>
+            </details>
+          </div>
+          <p class="small blast-help" id="strictBlastStatus" role="status">BLAST copies the FASTA and opens NCBI. Paste it into the query field.</p>
+          <div class="alignment-block">
+            <h4 class="alignment-title">Final read alignment</h4>
+            <p class="small coordinate-note">Positions start at 1 within the overlapping portion of each oriented read.</p>
+            <dl id="strictAlignmentStats" class="alignment-stats"></dl>
+            <div id="strictConflicts" class="conflict-review"></div>
+            <pre id="strictReport" class="alignment-output" aria-label="Final read alignment" tabindex="0"></pre>
+            <div class="alignment-key" aria-label="Base highlighting legend"><span><code class="aln-mismatch">A</code> Mismatch</span><span><code class="amb">R</code> Mixed base</span><span><code class="uncalled">N</code> Uncalled</span><span><code class="aln-gap">–</code> Gap</span><span><code>|</code> Match</span></div>
+          </div>
+          <div class="report-actions">
+            <span class="report-label">Complete analysis report</span>
+            <div class="result-controls">
+              <button class="result-btn copy-btn" data-target="strict" type="button">Copy Report</button>
+              <button class="result-btn download-btn" data-target="strict" type="button">Download Report (.txt)</button>
+            </div>
+          </div>
         </div>
 
-        <div class="result-block">
-          <div class="result-title">Full Merge — full-length merged span</div>
+        <div id="fullPanel" class="result-block" data-output-panel="full" role="tabpanel" aria-labelledby="fullTab" tabindex="0" hidden>
+          <h4 class="result-title">Full merged consensus</h4>
           <div class="result-hint">
-            Best for longer amplicons — with ~900 bp forward/reverse reads on a ~1,500 bp template, only ~300 bp overlaps. This output spans the full length; bases outside the overlap come from a single read.
+            Complete merged span. Bases outside the validated overlap are supported by one read.
           </div>
-          <div class="result-controls">
-            <button class="result-btn result-btn-primary copy-fasta-btn" data-target="full" type="button">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <rect x="9" y="9" width="13" height="13" rx="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
-              Copy FASTA
-            </button>
-            <button class="result-btn result-btn-primary download-fasta-btn" data-target="full" type="button">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <path d="M7 10l5 5 5-5"/>
-                <path d="M12 15V3"/>
-              </svg>
-              Download .fasta
-            </button>
-
+          <div class="sequence-toolbar">
+            <span class="output-label">Consensus sequence (FASTA)</span>
+            <div class="result-controls">
+              <button class="result-btn result-btn-primary copy-fasta-btn" data-target="full" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy FASTA
+              </button>
+              <button class="result-btn result-btn-primary download-fasta-btn" data-target="full" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <path d="M7 10l5 5 5-5"/>
+                  <path d="M12 15V3"/>
+                </svg>
+                Download .fasta
+              </button>
+              <button class="result-btn blast-btn" data-target="full" type="button" title="Copy this FASTA and open NCBI BLASTn in a new tab">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>
+                NCBI BLASTn
+              </button>
+            </div>
           </div>
           <p id="fullEmpty" class="small" hidden>No merged sequence is available. Check your input reads and the full report.</p>
-          <pre id="full"></pre>
-          <p class="small"><a class="blast-link" data-target="full" href="https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&amp;PAGE_TYPE=BlastSearch" target="_blank" rel="noopener noreferrer">NCBI BLASTn ↗</a> — copy this output's FASTA and paste it into BLAST.</p>
-          <details class="report-details">
-            <summary>Full report</summary>
+          <pre id="full" class="sequence-output" aria-label="Full merged consensus FASTA" tabindex="0"></pre>
+          <div class="sequence-footer">
+            <span class="small">Sequence direction: 5′ → 3′</span>
+            <details class="base-code-key">
+              <summary>IUPAC base codes</summary>
+              <dl>{baseCodes.map(([code, bases]) => <div><dt>{code}</dt><dd>{bases}</dd></div>)}</dl>
+            </details>
+          </div>
+          <p class="small blast-help" id="fullBlastStatus" role="status">BLAST copies the FASTA and opens NCBI. Paste it into the query field.</p>
+          <div class="alignment-block">
+            <h4 class="alignment-title">Final read alignment</h4>
+            <p class="small coordinate-note">Positions start at 1 within each quality-trimmed, oriented read. Terminal gaps indicate single-read coverage.</p>
+            <dl id="fullAlignmentStats" class="alignment-stats"></dl>
+            <div id="fullConflicts" class="conflict-review"></div>
+            <pre id="fullReport" class="alignment-output" aria-label="Final read alignment" tabindex="0"></pre>
+            <div class="alignment-key" aria-label="Base highlighting legend"><span><code class="aln-mismatch">A</code> Mismatch</span><span><code class="amb">R</code> Mixed base</span><span><code class="uncalled">N</code> Uncalled</span><span><code class="aln-gap">–</code> Gap</span><span><code>|</code> Match</span></div>
+          </div>
+          <div class="report-actions">
+            <span class="report-label">Complete analysis report</span>
             <div class="result-controls">
-            <button class="result-btn copy-btn" data-target="full" type="button">
-              Copy Report
-            </button>
-            <button class="result-btn download-btn" data-target="full" type="button">
-              Download Report (.txt)
-            </button>
+              <button class="result-btn copy-btn" data-target="full" type="button">Copy Report</button>
+              <button class="result-btn download-btn" data-target="full" type="button">Download Report (.txt)</button>
             </div>
-            <pre id="fullReport"></pre>
-          </details>
+          </div>
         </div>
 
-        <div id="primerResultBlock" class="result-block" style="display:none">
-          <div class="result-title">Primer Trimmed Consensus</div>
-          <div class="result-controls">
-            <button class="result-btn result-btn-primary copy-fasta-btn" data-target="primerTrim" type="button">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <rect x="9" y="9" width="13" height="13" rx="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
-              Copy FASTA
-            </button>
-            <button class="result-btn result-btn-primary download-fasta-btn" data-target="primerTrim" type="button">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <path d="M7 10l5 5 5-5"/>
-                <path d="M12 15V3"/>
-              </svg>
-              Download .fasta
-            </button>
-
+        <div id="primerResultBlock" class="result-block" data-output-panel="primerTrim" role="tabpanel" aria-labelledby="primerTrimTab" tabindex="0" hidden>
+          <h4 class="result-title">Primer-trimmed consensus</h4>
+          <p class="result-hint">Consensus after primer trimming. Any fallback trimming is flagged above.</p>
+          <div class="sequence-toolbar">
+            <span class="output-label">Consensus sequence (FASTA)</span>
+            <div class="result-controls">
+              <button class="result-btn result-btn-primary copy-fasta-btn" data-target="primerTrim" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy FASTA
+              </button>
+              <button class="result-btn result-btn-primary download-fasta-btn" data-target="primerTrim" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <path d="M7 10l5 5 5-5"/>
+                  <path d="M12 15V3"/>
+                </svg>
+                Download .fasta
+              </button>
+              <button class="result-btn blast-btn" data-target="primerTrim" type="button" title="Copy this FASTA and open NCBI BLASTn in a new tab">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>
+                NCBI BLASTn
+              </button>
+            </div>
           </div>
           <p id="primerTrimEmpty" class="small" hidden>No primer-trimmed sequence is available. Check primer matches in the full report.</p>
-          <pre id="primerTrim"></pre>
-          <p class="small"><a class="blast-link" data-target="primerTrim" href="https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&amp;PAGE_TYPE=BlastSearch" target="_blank" rel="noopener noreferrer">NCBI BLASTn ↗</a> — copy this output's FASTA and paste it into BLAST.</p>
-          <details class="report-details">
-            <summary>Full report</summary>
+          <pre id="primerTrim" class="sequence-output" aria-label="Primer-trimmed consensus FASTA" tabindex="0"></pre>
+          <div class="sequence-footer">
+            <span class="small">Sequence direction: 5′ → 3′</span>
+            <details class="base-code-key">
+              <summary>IUPAC base codes</summary>
+              <dl>{baseCodes.map(([code, bases]) => <div><dt>{code}</dt><dd>{bases}</dd></div>)}</dl>
+            </details>
+          </div>
+          <p class="small blast-help" id="primerTrimBlastStatus" role="status">BLAST copies the FASTA and opens NCBI. Paste it into the query field.</p>
+          <div class="alignment-block">
+            <h4 class="alignment-title">Read alignment before primer trimming</h4>
+            <p class="small coordinate-note">Full assembly before primer trimming. Positions refer to the quality-trimmed, oriented reads, not the primer-trimmed FASTA.</p>
+            <dl id="primerTrimAlignmentStats" class="alignment-stats"></dl>
+            <div id="primerTrimConflicts" class="conflict-review"></div>
+            <pre id="primerTrimReport" class="alignment-output" aria-label="Read alignment before primer trimming" tabindex="0"></pre>
+            <div class="alignment-key" aria-label="Base highlighting legend"><span><code class="aln-mismatch">A</code> Mismatch</span><span><code class="amb">R</code> Mixed base</span><span><code class="uncalled">N</code> Uncalled</span><span><code class="aln-gap">–</code> Gap</span><span><code>|</code> Match</span></div>
+          </div>
+          <div class="report-actions">
+            <span class="report-label">Complete analysis report</span>
             <div class="result-controls">
-            <button class="result-btn copy-btn" data-target="primerTrim" type="button">
-              Copy Report
-            </button>
-            <button class="result-btn download-btn" data-target="primerTrim" type="button">
-              Download Report (.txt)
-            </button>
+              <button class="result-btn copy-btn" data-target="primerTrim" type="button">Copy Report</button>
+              <button class="result-btn download-btn" data-target="primerTrim" type="button">Download Report (.txt)</button>
             </div>
-            <pre id="primerTrimReport"></pre>
-          </details>
+          </div>
         </div>
+        <section class="peak-section shared-peaks" aria-labelledby="peakHeading">
+          <h4 id="peakHeading" class="result-title">Double-peak detection</h4>
+          <p class="small">Shared across outputs. Consensus positions refer to the full merge, before primer trimming.</p>
+          <p id="peakThreshold" class="small"></p>
+          <div id="sharedPeaks"></div>
+          <p class="small peak-coordinate-note">Trace positions follow the read orientation stated in the report. Peaks outside a trimmed output remain visible here.</p>
+        </section>
       </div>
     </div>
 

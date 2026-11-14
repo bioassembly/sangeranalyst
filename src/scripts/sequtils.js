@@ -72,7 +72,7 @@ export function renderReportHtml(text) {
           inFastaSeq = false;
           return escaped;
         }
-        return escaped.replace(IUPAC_AMB_RE, '<span class="amb">$1</span>');
+        return escaped.replace(IUPAC_AMB_RE, '<span class="amb">$1</span>').replace(/N/g, '<span class="uncalled">N</span>');
       }
       return escaped;
     })

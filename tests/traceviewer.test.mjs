@@ -11,6 +11,7 @@ import {
   computeMottTrimWindow,
   detectTraceSecondaryPeaks,
   attachTraceViewer,
+  resolveTracePosition,
 } from '../src/scripts/traceviewer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -91,6 +92,32 @@ test('parseABIF parses bundled demo .ab1 files with numeric Phred scores', () =>
   for (const ch of ['G', 'A', 'T', 'C']) {
     assert.ok(fwd.channels[ch].length > 1000, `channel ${ch} has trace samples`);
   }
+});
+
+test('report trace coordinates map through the original read for either display orientation', () => {
+  assert.deepEqual(resolveTracePosition(15, 100, false, false), { originalPosition: 15, displayIndex: 14 });
+  assert.deepEqual(resolveTracePosition(15, 100, true, true), { originalPosition: 86, displayIndex: 14 });
+  assert.deepEqual(resolveTracePosition(15, 100, true, false), { originalPosition: 86, displayIndex: 85 });
+  assert.deepEqual(resolveTracePosition(15, 100, false, true), { originalPosition: 15, displayIndex: 85 });
+  assert.deepEqual(resolveTracePosition(1, 100, true, true), { originalPosition: 100, displayIndex: 0 });
+  assert.deepEqual(resolveTracePosition(100, 100, true, true), { originalPosition: 1, displayIndex: 99 });
+  for (const position of [0, -1, 101, 1.5, null, 'inbetween 1-2']) assert.equal(resolveTracePosition(position, 100, true, true), null);
+  assert.equal(resolveTracePosition(15, 100, null, true), null);
+});
+
+test('trace focusing preserves raw coordinates, accepts one-sided gaps and rejects unavailable bases', () => {
+  const read = filename => {
+    const buf = fs.readFileSync(path.join(DEMO_DIR, filename));
+    return parseABIF(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  };
+  const viewer = attachTraceViewer({});
+  viewer.setData(read('fwd_control.ab1'), read('rev_control.ab1'), 'forward', 'reverse');
+  assert.deepEqual(viewer.focusPositions({ forward: 15, reverse: 44 }, true), { forward: 15, reverse: 354 });
+  assert.deepEqual(viewer.focusPositions({ forward: null, reverse: 34 }, true), { forward: null, reverse: 364 });
+  assert.equal(viewer.focusPositions({ forward: 999, reverse: 44 }, true), null);
+  assert.equal(viewer.focusPositions({ forward: 15, reverse: 44 }, null), null);
+  viewer.clear();
+  assert.equal(viewer.focusPositions({ forward: 15, reverse: 44 }, true), null);
 });
 
 test('parseABIF decodes inline FWO_1 != GATC and keeps PCON2 >= 32 numeric', () => {
@@ -192,7 +219,10 @@ test('alignColumns aligns semi-global overlap and attachTraceViewer handles Reve
         fillRect() {},
         strokeRect() {},
         fillText() {},
+        measureText(text) { return { width: String(text).length * 6 }; },
         beginPath() {},
+        rect() {},
+        clip() {},
         moveTo() {},
         lineTo() {},
         closePath() {},

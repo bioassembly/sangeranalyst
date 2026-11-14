@@ -9,6 +9,7 @@ const CHANNEL_COLORS = { A: '#16a34a', C: '#2563eb', G: '#111827', T: '#dc2626' 
 const QUAL_COLORS = { good: '#16a34a', mid: '#eab308', bad: '#dc2626' };
 const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
 const MAX_ALIGN_CELLS = 4_000_000;
+const MIN_QUALITY_SPACING_PX = 18;
 
 export function revcomp(s) {
   let out = '';
@@ -361,20 +362,27 @@ function makeColToSample(ploc, colOf) {
 }
 
 function computeScaleMax(channels) {
-  const pool = [];
+  let maximum = 0;
   for (const values of Object.values(channels)) {
     if (!values || !values.length) continue;
-    const stride = Math.max(1, Math.floor(values.length / 4000));
-    for (let i = 0; i < values.length; i += stride) {
-      if (values[i] > 0) pool.push(values[i]);
-    }
+    for (const value of values) maximum = Math.max(maximum, value);
   }
-  pool.sort((a, b) => a - b);
-  return Math.max(pool.length ? pool[Math.floor(pool.length * 0.995)] : 1, 10);
+  // Fit the highest recorded peak at the default height so real signal is not
+  // hidden above the chart. The peak-height control can still zoom vertically.
+  return Math.max(maximum, 10);
 }
 
 function qualColor(q) {
   return q >= 40 ? QUAL_COLORS.good : q >= 20 ? QUAL_COLORS.mid : QUAL_COLORS.bad;
+}
+
+// Translate a one-based report coordinate through the original ABIF read to
+// the displayed orientation. Server and browser orientation can differ.
+export function resolveTracePosition(position, length, reportComplemented, displayComplemented) {
+  if (!Number.isSafeInteger(position) || position < 1 || position > length || typeof reportComplemented !== 'boolean') return null;
+  const originalPosition = reportComplemented ? length - position + 1 : position;
+  const displayIndex = displayComplemented ? length - originalPosition : originalPosition - 1;
+  return { originalPosition, displayIndex };
 }
 
 function createReadRenderer(canvas) {
@@ -416,13 +424,13 @@ function createReadRenderer(canvas) {
 
     const sampleAt = (col) => {
       const s = colToSample(col);
-      return Math.max(0, Math.min(s, sampleCount - 1));
+      return s >= 0 && s <= sampleCount - 1 ? s : null;
     };
 
     const padBottom = 18;
-    const qualH = read.qual ? 22 : 0;
     const posH = 12;
-    const padTop = posH + qualH + 4;
+    // Leave space for both quality values and the secondary-peak label.
+    const padTop = posH + (read.qual ? 22 : 6) + 14;
     const plotH = h - padBottom - padTop;
     const baseline = h - padBottom;
     const spacing = 1 / view.colsPerPx;
@@ -478,7 +486,8 @@ function createReadRenderer(canvas) {
     const drawTick = (pos1) => {
       const col = pos1 - 1;
       const px = (col - view.col) / view.colsPerPx;
-      if (px < -20 || px > w + 20) return;
+      const halfLabel = ctx.measureText(String(pos1)).width / 2;
+      if (px < halfLabel || px > w - halfLabel) return;
       ctx.fillStyle = '#4b5563';
       ctx.fillRect(px - 0.5, 0, 1, 4);
       ctx.fillText(String(pos1), px, 11);
@@ -492,7 +501,8 @@ function createReadRenderer(canvas) {
     // 4. Quality strip: colored bar per base, Q number when zoomed in, plus
     //    amber secondary-peak diamond markers above the bar.
     if (read.qual) {
-      const showQNums = spacing >= 14;
+      const showQNums = spacing >= MIN_QUALITY_SPACING_PX;
+      if (showQNums) ctx.font = '600 11px monospace';
       for (let i = 0; i < read.bases.length; i++) {
         const col = colOf[i];
         const px = (col - view.col) / view.colsPerPx;
@@ -501,8 +511,11 @@ function createReadRenderer(canvas) {
         ctx.fillStyle = c;
         ctx.fillRect(px - 1.5, posH + 13, 3, 7);
         if (showQNums) {
-          ctx.font = '8px monospace';
-          ctx.fillText(String(read.qual[i]), px, posH + 10);
+          const label = String(read.qual[i]);
+          const halfLabel = ctx.measureText(label).width / 2;
+          if (px < halfLabel || px > w - halfLabel) continue;
+          ctx.fillStyle = '#26374a';
+          ctx.fillText(label, px, posH + 10);
         }
       }
     }
@@ -511,7 +524,7 @@ function createReadRenderer(canvas) {
       for (const [idx, sp] of read.secPeakByIdx.entries()) {
         const col = colOf[idx];
         const px = (col - view.col) / view.colsPerPx;
-        if (px < -8 || px > w + 8) continue;
+        if (px < 4 || px > w - 4) continue;
         const dy = posH + (read.qual ? 22 : 6);
         ctx.fillStyle = '#d97706';
         ctx.beginPath();
@@ -524,12 +537,30 @@ function createReadRenderer(canvas) {
         if (spacing >= 18) {
           ctx.font = '700 8px monospace';
           ctx.textAlign = 'center';
-          ctx.fillText(`${sp.primaryBase}/${sp.secondaryBase}`, px, dy + 11);
+          const label = `${sp.primaryBase}/${sp.secondaryBase}`;
+          const halfLabel = ctx.measureText(label).width / 2;
+          if (px >= halfLabel && px <= w - halfLabel) ctx.fillText(label, px, dy + 11);
         }
       }
     }
 
     // 5. Traces
+    // Fit tall visible peaks when the height control would otherwise cut them
+    // off. All four channels in one read share this scale.
+    const sampleStart = colToSample(view.col);
+    const sampleEnd = colToSample(view.col + w * view.colsPerPx);
+    const from = Math.max(0, Math.floor(Math.min(sampleStart, sampleEnd)));
+    const to = Math.min(sampleCount - 1, Math.ceil(Math.max(sampleStart, sampleEnd)));
+    let visibleMax = 0;
+    for (const values of Object.values(read.channels)) {
+      if (!values?.length) continue;
+      for (let i = from; i <= to && i < values.length; i++) visibleMax = Math.max(visibleMax, values[i]);
+    }
+    const displayScale = Math.max(scaleMax / amp, visibleMax * 1.05, 1);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, padTop, w, plotH + 1);
+    ctx.clip();
     ctx.lineWidth = 1.4;
     for (const [base, values] of Object.entries(read.channels)) {
       if (!values || !values.length) continue;
@@ -539,13 +570,15 @@ function createReadRenderer(canvas) {
       for (let px = 0; px <= w; px++) {
         const col = view.col + px * view.colsPerPx;
         const s = sampleAt(col);
+        if (s === null) { started = false; continue; }
         const s0 = Math.floor(s), s1 = Math.min(s0 + 1, sampleCount - 1);
         const v = values[s0] + (values[s1] - values[s0]) * (s - s0);
-        const y = baseline - Math.min((v / scaleMax) * plotH * amp, plotH + padTop);
+        const y = baseline - (v / displayScale) * plotH;
         if (!started) { ctx.moveTo(px, y); started = true; } else { ctx.lineTo(px, y); }
       }
       ctx.stroke();
     }
+    ctx.restore();
 
     // 6. Base labels, colored by base (slightly muted in Mott-trimmed tails)
     if (spacing >= 9) {
@@ -555,13 +588,23 @@ function createReadRenderer(canvas) {
       for (let i = 0; i < read.bases.length; i++) {
         const col = colOf[i];
         const px = (col - view.col) / view.colsPerPx;
-        if (px < -4 || px > w + 4) continue;
+        const halfLabel = ctx.measureText(read.bases[i]).width / 2;
+        if (px < halfLabel || px > w - halfLabel) continue;
         const trimmed = i < tStart || i >= tEnd;
         ctx.globalAlpha = trimmed ? 0.42 : 1;
         ctx.fillStyle = CHANNEL_COLORS[read.bases[i]] || '#888';
         ctx.fillText(read.bases[i], px, h - 5);
       }
       ctx.globalAlpha = 1;
+    }
+    if (Number.isInteger(read.selectedIndex)) {
+      const px = (colOf[read.selectedIndex] - view.col) / view.colsPerPx;
+      const bandWidth = Math.max(10, Math.min(spacing, 24));
+      ctx.fillStyle = 'rgba(7, 91, 189, 0.08)';
+      ctx.fillRect(px - bandWidth / 2, 0, bandWidth, h);
+      ctx.strokeStyle = '#075bbd';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(px - bandWidth / 2, 1, bandWidth, h - 2);
     }
   }
 
@@ -596,7 +639,9 @@ export function attachTraceViewer({
   let secPeakThreshold = 33;
   let totalCols = 0;
   let view = { col: 0, colsPerPx: 1 };
+  let focusOffsets = { F: 0, R: 0 };
   const PX_PER_COL = 20;
+  const EDGE_PADDING_COLS = 1;
 
   const renderers = {
     F: createReadRenderer(canvasF),
@@ -612,35 +657,89 @@ export function attachTraceViewer({
   function syncScrollBar() {
     if (!scrollBar) return;
     const spacer = scrollBar.firstElementChild;
+    const minCol = -EDGE_PADDING_COLS;
+    const maxCol = Math.max(minCol, totalCols + EDGE_PADDING_COLS - activeWidth() * view.colsPerPx);
     if (spacer) {
-      spacer.style.width = `${Math.max(totalCols * PX_PER_COL, scrollBar.clientWidth + 1)}px`;
+      spacer.style.width = `${Math.ceil(scrollBar.clientWidth + (maxCol - minCol) * PX_PER_COL)}px`;
     }
-    const target = Math.round(view.col * PX_PER_COL);
+    const target = Math.round((view.col - minCol) * PX_PER_COL);
     if (Math.abs(scrollBar.scrollLeft - target) > 1) {
       scrollBar.scrollLeft = target;
     }
   }
 
   function fitView() {
-    const initialCols = Math.min(40, Math.max(totalCols, 1));
+    const readableCols = Math.max(1, Math.floor(activeWidth() / MIN_QUALITY_SPACING_PX));
+    const initialCols = Math.min(40, readableCols, Math.max(totalCols + EDGE_PADDING_COLS * 2, 1));
     view.colsPerPx = initialCols / activeWidth();
-    view.col = 0;
+    view.col = -EDGE_PADDING_COLS;
+    if (reads.F && reads.R && reads.F.colOf && reads.R.colOf) {
+      const overlapStart = Math.max(reads.F.colOf[0], reads.R.colOf[0]);
+      const overlapEnd = Math.min(reads.F.colOf.at(-1), reads.R.colOf.at(-1));
+      // If a narrow window would contain only one read, start near their
+      // shared region; the scrollbar still reaches the earlier read end.
+      if (overlapStart <= overlapEnd && overlapStart >= initialCols - 2) {
+        view.col = Math.max(-EDGE_PADDING_COLS, overlapStart - 2);
+      }
+    }
     clampView();
   }
 
   function clampView() {
     const w = activeWidth();
     const minColsPerPx = 0.02; // max ~50 px per base zoom-in
-    const maxColsPerPx = Math.max(totalCols / w, minColsPerPx);
+    const maxColsPerPx = Math.max((totalCols + EDGE_PADDING_COLS * 2) / w, minColsPerPx);
     view.colsPerPx = Math.min(Math.max(view.colsPerPx, minColsPerPx), maxColsPerPx);
     const visible = w * view.colsPerPx;
-    view.col = Math.max(0, Math.min(view.col, Math.max(0, totalCols - visible)));
+    const minCol = -EDGE_PADDING_COLS;
+    const maxCol = Math.max(minCol, totalCols + EDGE_PADDING_COLS - visible);
+    view.col = Math.max(minCol, Math.min(view.col, maxCol));
   }
 
   function draw() {
-    renderers.F.draw(view);
-    renderers.R.draw(view);
+    renderers.F.draw({ ...view, col: view.col + focusOffsets.F });
+    renderers.R.draw({ ...view, col: view.col + focusOffsets.R });
     syncScrollBar();
+  }
+
+  function clearFocus() {
+    focusOffsets = { F: 0, R: 0 };
+    for (const [key, canvas] of [['F', canvasF], ['R', canvasR]]) {
+      if (reads[key]) delete reads[key].selectedIndex;
+      canvas?.setAttribute?.('aria-label', `${key === 'F' ? 'Forward' : 'Reverse'} chromatogram`);
+    }
+    draw();
+  }
+
+  function focusPositions(positions, reportReverseComplemented) {
+    const resolved = {};
+    for (const [direction, key] of [['forward', 'F'], ['reverse', 'R']]) {
+      const position = positions[direction];
+      if (position === null || position === undefined) continue; // A gap has no trace base.
+      if (!rawReads[key] || !reads[key]) return null;
+      const resolvedPosition = resolveTracePosition(position, rawReads[key].bases.length,
+        key === 'R' ? reportReverseComplemented : false, key === 'R' ? revComplemented : false);
+      if (!resolvedPosition) return null;
+      resolved[key] = resolvedPosition;
+    }
+    if (!Object.keys(resolved).length) return null;
+    clearFocus();
+    const columns = {};
+    for (const [key, selected] of Object.entries(resolved)) {
+      reads[key].selectedIndex = selected.displayIndex;
+      columns[key] = reads[key].colOf?.[selected.displayIndex] ?? selected.displayIndex;
+      const canvas = key === 'F' ? canvasF : canvasR;
+      canvas?.setAttribute?.('aria-label', `${key === 'F' ? 'Forward' : 'Reverse'} chromatogram, selected original read base ${selected.originalPosition}`);
+    }
+    const center = columns.F ?? columns.R;
+    // Anchor both exact report bases together even when the browser's initial
+    // full-read alignment differs from the API's quality-trimmed alignment.
+    for (const key of ['F', 'R']) focusOffsets[key] = columns[key] === undefined ? 0 : columns[key] - center;
+    view.colsPerPx = Math.min(24, Math.max(totalCols, 1)) / activeWidth();
+    view.col = center - activeWidth() * view.colsPerPx / 2;
+    clampView();
+    draw();
+    return { forward: resolved.F?.originalPosition ?? null, reverse: resolved.R?.originalPosition ?? null };
   }
 
   function recomputeAnnotations() {
@@ -674,12 +773,13 @@ export function attachTraceViewer({
     view.colsPerPx /= factor;
     clampView();
     const visibleAfter = w * view.colsPerPx;
-    view.col = Math.max(0, center - ratio * visibleAfter);
+    view.col = center - ratio * visibleAfter;
     clampView();
     draw();
   }
 
   function setData(fwdInput, revInput, nameF, nameR) {
+    focusOffsets = { F: 0, R: 0 };
     rawReads = { F: cloneRawRead(fwdInput), R: cloneRawRead(revInput) };
     const fwd = cloneRawRead(fwdInput);
     const rev = cloneRawRead(revInput);
@@ -762,7 +862,7 @@ export function attachTraceViewer({
 
     if (fwd) parts.unshift(`${nameF} (${fwd.bases.length} bases)`);
     if (rev) parts.splice(fwd ? 1 : 0, 0, `${nameR} (${rev.bases.length} bases)`);
-    if (metaEl) metaEl.textContent = parts.join(' · ');
+    if (metaEl) metaEl.textContent = parts.join('; ');
 
     fitView();
     draw();
@@ -772,6 +872,10 @@ export function attachTraceViewer({
   zoomInBtn?.addEventListener('click', () => zoom(1.4, 0.5));
   zoomOutBtn?.addEventListener('click', () => zoom(0.72, 0.5));
   resetBtn?.addEventListener('click', () => {
+    clearFocus();
+    if (ampSlider) ampSlider.value = '1';
+    renderers.F.setAmplitude(1);
+    renderers.R.setAmplitude(1);
     fitView();
     draw();
   });
@@ -784,7 +888,7 @@ export function attachTraceViewer({
 
   scrollBar?.addEventListener('scroll', () => {
     if (!reads.F && !reads.R) return;
-    view.col = scrollBar.scrollLeft / PX_PER_COL;
+    view.col = scrollBar.scrollLeft / PX_PER_COL - EDGE_PADDING_COLS;
     clampView();
     draw();
   });
@@ -811,7 +915,7 @@ export function attachTraceViewer({
       if (pointers.size === 1) {
         const dx = curr.x - prev.x;
         pointers.set(e.pointerId, curr);
-        view.col = Math.max(0, view.col - dx * view.colsPerPx);
+        view.col -= dx * view.colsPerPx;
         clampView();
         draw();
       } else if (pointers.size === 2) {
@@ -852,6 +956,8 @@ export function attachTraceViewer({
 
   return {
     setData,
+    focusPositions,
+    clearFocus,
     setMottCutoff(val) {
       const num = parseFloat(val);
       if (!Number.isFinite(num) || num <= 0) return;
@@ -871,6 +977,7 @@ export function attachTraceViewer({
       }
     },
     clear() {
+      focusOffsets = { F: 0, R: 0 };
       rawReads = { F: null, R: null };
       reads = { F: null, R: null };
       renderers.F.setRead(null);

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Astro static site for SangerAnalyst — single page (`src/pages/index.astro`), vanilla CSS (`src/styles/global.css`), client scripts `src/scripts/app.js` (main) + `src/scripts/traceviewer.js` (chromatogram viewer) + `src/scripts/sequtils.js` (pure FASTA/primer/report-rendering/file-pairing helpers), unit tests in `tests/*.test.mjs`. No Tailwind, no MDX.
+Astro static site for SangerAnalyst — single page (`src/pages/index.astro`), vanilla CSS (`src/styles/global.css`), client scripts `src/scripts/app.js` (main) + `src/scripts/results.js` (final-alignment presentation) + `src/scripts/traceviewer.js` (ABIF parser and trace utilities) + `src/scripts/sequtils.js` (pure FASTA/primer/report-rendering/file-pairing helpers), unit tests in `tests/*.test.mjs`. No Tailwind, no MDX.
 
 ## Commands
 
@@ -29,12 +29,13 @@ CI (`.github/workflows/ci.yml`) gates pushes to `main` and all PRs on `npm test`
 ## API contract (frontend ↔ backend)
 
 POST multipart FormData with fields: `fileF`, `fileR` (.ab1), optional `primerF`/`primerR` (uploaded file or pasted sequence), `mottCutoff`, `minPhred`, `secondary_peak_threshold`.
-Response JSON: `data.outputs.consensus_strict`, `data.outputs.consensus_full`, optional `data.outputs.primer_trim`, and `data.warnings[]` rendered using textContent. Optional `data.analysis` contains export provenance and primer outcomes. Non-ORF `data.summary` remains available to API clients but is not rendered. No ORF or inspector dashboard is maintained.
+Response JSON: `data.outputs.consensus_strict`, `data.outputs.consensus_full`, optional `data.outputs.primer_trim`, and `data.warnings[]` rendered using textContent. Optional `data.analysis` supplies primer outcomes; failed matches/fallbacks stay visible. There is no analysis JSON download. Non-ORF `data.summary` remains available to API clients but is not rendered. No ORF or inspector dashboard is maintained.
 
 ## Coupling points & gotchas
 
-- Element IDs are the coupling point between `index.astro` and `app.js` (`fileF`, `fileR`, `swapReadsBtn`, `mottCutoff`, `qPhred`, `secPeak`, `primerF-file`/`primerF-text`/`primerF-label`, `primerR-*`, result `<pre>`s `strict`/`full`/`primerTrim`, `loadDemoBtn`, trace viewer: `traceSection`/`traceCanvasF`/`traceCanvasR`/`traceMeta`/`traceZoomIn`/`traceZoomOut`/`traceReset`/`traceAmp`/`traceScrollBar`). Renaming one side breaks the other silently.
-- The chromatogram viewer (`traceviewer.js`) parses AB1 **client-side** — directory entries are 28 bytes with type/size at +8/+10, count at +12, dataSize at +16, dataOffset at +20; `dataSize <= 4` means data is inline at `entryOffset + 20` (e.g. `FWO_1`); text (`readText`) and numeric (`readNumbers`) readers are strictly separated so `PCON2` quality scores >=32 are never misread as ASCII. Quality comes from `PCON2`/`PCON1`. When reverse-complementing for display, the DATA channels must be complement-swapped (A↔T, G↔C) WITHOUT reversing sample order. Forward/reverse traces are stacked in shared coordinates via a client-side semi-global Needleman-Wunsch (`alignColumns`).
+- Element IDs are the coupling point between `index.astro` and `app.js` (`fileF`, `fileR`, `swapReadsBtn`, `mottCutoff`, `qPhred`, `secPeak`, `primerF-file`/`primerF-text`/`primerF-label`, `primerR-*`, result `<pre>`s `strict`/`full`/`primerTrim` and their `Report` counterparts, `loadDemoBtn`). Update both sides together.
+- Preserve the original blue theme, page width, header, and form layout. Results use a Quarto-style output tabset (High confidence, Full merge, optional Primer trimmed) with native ARIA tab keyboard navigation. Input chromatograms load client-side as soon as reads are selected or the demo is loaded; the analysis API is not needed to display traces. Final sequences and read alignments come from the API. `results.js` extracts paired-read alignment blocks from reports without changing coordinates or spacing. Primer-trimmed output displays the full assembly alignment explicitly labelled as before primer trimming.
+- `traceviewer.js` provides `parseABIF` and the input chromatogram viewer, including zoom, pan, orientation, and quality overlays. Keep its canvas/control IDs in sync with `app.js` and `index.astro`. Demo, drop, and swap operations must refresh both traces after updating the read files. Keep ABIF parsing and quality tests when changing presentation.
 - Consensus outputs are rendered via `renderSeq` (`sequtils.js:renderReportHtml`) which wraps IUPAC ambiguity codes in `<span class="amb">` strictly on FASTA sequence lines (between `>` and the first blank/`#` line). Clean FASTA exports (`extractCleanFasta`) strip all `#` report and alignment lines.
 - File inputs pre-validate on change: ABIF magic bytes + 5 MB size, inline error `<div class="file-err">` inserted after the input (`fileFErr`/`fileRErr`). Backend errors are mapped: 400 shows the backend's JSON message, 413/500 get friendly overrides.
 - Client enforces 5 MB max per file and 5M characters per pasted primer; keep that limit when touching validation.
@@ -46,3 +47,7 @@ Response JSON: `data.outputs.consensus_strict`, `data.outputs.consensus_full`, o
 ## Result state and validation
 
 `runstate.js` binds immutable request snapshots to completed outputs. Any analysis input change makes exports stale until rerun. Input controls are locked during async validation, analysis, and demo loading. Keep raw reports separate from displayed FASTA so exports remain unchanged. Primer normalization in `sequtils.js` matches the API: exactly one FASTA record or raw IUPAC DNA, 10–5M bases, no digits. Ambiguous dropped pairs require explicit slot assignment. Browser regression checks run with `npm run test:browser`; local API smoke uses `SANGER_INTEGRATION=1`.
+
+Successful primer coordinates are absent from the screen but retained in text reports. Failed matches, fallback trimming (including an omitted end when one primer is supplied), and scientific warnings stay visible.
+
+Double-peak detection is shared outside the output tabs and uses the full-merge report, explicitly labelled with full-merge consensus coordinates. Explicit no-peak messages differ from missing report data. Conflict links use each output's report coordinates; primer-trimmed links require a unique exact segment in the full merge. Use the API summary orientation for reverse trace navigation: legacy report labels always say reverse complement, including raw-oriented reads. Keep input chromatograms and secondary-peak markers available.

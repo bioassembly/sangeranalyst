@@ -19,7 +19,8 @@ https://bioassembly.github.io/sangeranalyst
 
 ## ✨ Features
 
-- **Chromatogram viewer** — stacked forward/reverse peak traces parsed client-side from your `.ab1` files, with zoom, pan/scrollbar, peak-height control, per-base quality bars, **live Mott trim shading**, **secondary-peak markers (`◆`)**, and a low-identity warning when reads may not share a template.
+- **Input chromatograms** — forward/reverse traces appear immediately on file selection or **Try demo data**, with zoom, pan, quality shading and secondary-peak markers. This works without the analysis API.
+- **Final read alignment** — the server's read alignment is visible immediately below each consensus, with mismatch/gap highlighting and preserved coordinates.
 - **Quality-weighted consensus** — Mott trimming, automatic orientation detection, statistically validated overlap, PolyPhred-style heterozygote calling (IUPAC codes), and conflict/secondary-peak reports embedded in each output.
 - **Smart upload & primer handling** — drag & drop `.ab1` auto-pairing (`_F`/`_R`, `27F`/`1492R`, etc.), 1-click `⇄` F/R swap, plus FASTA (`.fasta`/`.fa`/`.fna`/`.txt`) or pasted primer sequences (IUPAC accepted, min 10 bases).
 - **Clean FASTA & Full Report exports** — High-Confidence Consensus, Full Merge, and conditional Primer-Trimmed Consensus each provide **Copy FASTA** / **Download `.fasta`** (strict FASTA for BLAST/SnapGene/Biopython) alongside **Copy Report** / **Download Report (`.txt`)**; IUPAC ambiguity bases are highlighted strictly on sequence lines.
@@ -69,7 +70,7 @@ Defaults work well for most datasets (Mott `0.1`, min Phred `20`, secondary peak
 The backend processes each request in ~0.4 seconds, uploaded data is deleted immediately after processing.
 
 ### **5. Inspect Results**
-Preview the chromatogram traces first (zoom/pan, quality bars, low-identity warning), then review the outputs below — each with Copy/Download buttons.
+Review each final FASTA and its read alignment directly in the results. Copy or download the sequence or the complete text report. Input chromatograms are available before analysis; final sequence outputs come from the analysis API. Analysis JSON downloads and successful primer-coordinate messages are omitted; fallback warnings remain visible.
 
 You will receive 2 outputs (3 if primer included):
 
@@ -90,9 +91,9 @@ This provides the longest methodologically reliable sequence, though meaning it'
 
 Run `npm ci`, `npm test`, and `npm run build`. Browser checks use `npm run test:browser` after installing Chromium with `node node_modules/playwright-core/cli.js install chromium`.
 
-Results show nucleotide FASTA first, with the full report available in a disclosure. Editing reads, primers, or settings marks the completed analysis stale and disables exports until rerun. Downloads use the filenames and settings captured for that analysis.
+Results use a panel tabset: High confidence, Full merge, and Primer trimmed when supplied. Each tab keeps its FASTA, final read alignment and exports together. A shared double-peak table below the tabs uses full-merge coordinates. Underlined conflicts open the corresponding chromatogram bases, with a return control. Primer-trimmed output displays the full assembly alignment with an explicit coordinate note. Full reports remain available as text downloads. Editing reads, primers, or settings marks the completed analysis stale and disables exports until rerun. Downloads use the filenames and settings captured for that analysis.
 
-Download `analysis.json` to retain effective parameters, normalized primers, SHA-256 input/sequence hashes, warnings, and available server software provenance. Older APIs are supported and explicitly marked as lacking server provenance. Use Copy FASTA beside the chosen output before opening its BLAST link.
+The NCBI BLASTn button copies the chosen FASTA and opens NCBI for pasting. Further interface proposals are recorded in [the improvement plan](docs/UI_IMPROVEMENT_PLAN.md).
 
 Primers accept raw DNA or one FASTA record, with IUPAC ambiguity codes, at least 10 bases, and a 5 MB input limit. Invalid encoding, digits, and multiple records are rejected. Ambiguous dropped read pairs require explicit Forward/Reverse slot assignment.
 
