@@ -273,3 +273,12 @@ test('alignColumns aligns semi-global overlap and attachTraceViewer handles Reve
   // Caller's read object must not be mutated
   assert.equal(sampleRead.bases, origBases);
 });
+
+test('secondary-peak detection excludes both Mott-trimmed tails and retains raw positions', () => {
+  const ploc = [5, 15, 25, 35, 45, 55];
+  const A = new Array(65).fill(0), G = new Array(65).fill(0);
+  for (const sample of ploc) { A[sample] = 100; G[sample] = 50; }
+  const read = { bases: 'AAAAAA', ploc, channels: { A, G } };
+  assert.deepEqual(detectTraceSecondaryPeaks(read, 33, false, 3, [2, 4]).map(p => p.position), [3, 4]);
+  assert.deepEqual(detectTraceSecondaryPeaks(read, 33, true, 3, [2, 4]).map(p => [p.position, p.primaryBase, p.secondaryBase]), [[3, 'T', 'C'], [4, 'T', 'C']]);
+});

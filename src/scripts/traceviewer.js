@@ -219,7 +219,7 @@ function findLocalMaxInWindow(trace, centerIdx, radius) {
 }
 
 // Client-side secondary peak detector matching sangeranalyst.py:detect_secondary_peaks.
-export function detectTraceSecondaryPeaks(rawRead, thresholdPct = 33, complementBases = false, searchWindow = 3) {
+export function detectTraceSecondaryPeaks(rawRead, thresholdPct = 33, complementBases = false, searchWindow = 3, trimWindow = null) {
   if (!rawRead || !rawRead.bases || !rawRead.ploc || !rawRead.channels) return [];
   const pct = Number(thresholdPct);
   if (!Number.isFinite(pct) || pct <= 0) return [];
@@ -228,7 +228,9 @@ export function detectTraceSecondaryPeaks(rawRead, thresholdPct = 33, complement
   const limit = Math.min(ploc.length, bases.length);
   const results = [];
 
-  for (let i = 0; i < limit; i++) {
+  const start = Math.max(0, trimWindow?.[0] ?? 0);
+  const end = Math.min(limit, trimWindow?.[1] ?? limit);
+  for (let i = start; i < end; i++) {
     const centerLoc = ploc[i];
     const primaryBase = bases[i];
     const primaryTrace = channels[primaryBase];
@@ -441,7 +443,7 @@ function createReadRenderer(canvas) {
       return s >= 0 && s <= sampleCount - 1 ? s : null;
     };
 
-    const padBottom = 18;
+    const padBottom = 34;
     const posH = 12;
     // Leave space for both quality values and the secondary-peak label.
     const padTop = posH + (read.qual ? 22 : 6) + 14;
@@ -539,7 +541,7 @@ function createReadRenderer(canvas) {
         const col = colOf[idx];
         const px = (col - view.col) / view.colsPerPx;
         if (px < 4 || px > w - 4) continue;
-        const dy = posH + (read.qual ? 22 : 6);
+        const dy = posH + (read.qual ? 30 : 14);
         ctx.fillStyle = '#d97706';
         ctx.beginPath();
         ctx.moveTo(px, dy - 3.5);
@@ -625,7 +627,13 @@ function createReadRenderer(canvas) {
         const trimmed = i < tStart || i >= tEnd;
         ctx.globalAlpha = trimmed ? 0.42 : 1;
         ctx.fillStyle = CHANNEL_COLORS[read.bases[i]] || '#888';
-        ctx.fillText(read.bases[i], px, h - 5);
+        ctx.fillText(read.bases[i], px, h - 20);
+        const secondary = read.secPeakByIdx?.get(i);
+        if (secondary) {
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = CHANNEL_COLORS[secondary.secondaryBase] || '#92400e';
+          ctx.fillText(secondary.secondaryBase, px, h - 5);
+        }
       }
       ctx.globalAlpha = 1;
     }
@@ -642,7 +650,7 @@ function createReadRenderer(canvas) {
   }
 
   function peakAt(x, y, view) {
-    if (!read?.secPeakByIdx || Math.abs(y - (12 + (read.qual ? 22 : 6))) > 10) return null;
+    if (!read?.secPeakByIdx || Math.abs(y - (12 + (read.qual ? 30 : 14))) > 7) return null;
     let nearest = null;
     let distance = Math.min(9, Math.max(4, 0.5 / view.colsPerPx));
     for (const [index, peak] of read.secPeakByIdx) {
@@ -797,18 +805,19 @@ export function attachTraceViewer({
       reads.F.trimWindow = rawReads.F.qual
         ? computeMottTrimWindow(rawReads.F.qual, mottCutoff)
         : [0, reads.F.bases.length];
-      const spF = detectTraceSecondaryPeaks(rawReads.F, secPeakThreshold, false);
+      const spF = detectTraceSecondaryPeaks(rawReads.F, secPeakThreshold, false, 3, reads.F.trimWindow);
       reads.F.secPeakByIdx = new Map(spF.map(p => [p.rawIndex, p]));
     }
     if (reads.R && rawReads.R) {
       const L = rawReads.R.bases.length;
+      const rawWindow = rawReads.R.qual ? computeMottTrimWindow(rawReads.R.qual, mottCutoff) : [0, L];
       if (rawReads.R.qual) {
         const [rs, re] = computeMottTrimWindow(rawReads.R.qual, mottCutoff);
         reads.R.trimWindow = revComplemented ? [L - re, L - rs] : [rs, re];
       } else {
         reads.R.trimWindow = [0, L];
       }
-      const spR = detectTraceSecondaryPeaks(rawReads.R, secPeakThreshold, revComplemented);
+      const spR = detectTraceSecondaryPeaks(rawReads.R, secPeakThreshold, revComplemented, 3, rawWindow);
       reads.R.secPeakByIdx = new Map(
         spR.map(p => [revComplemented ? (L - 1 - p.rawIndex) : p.rawIndex, p])
       );
@@ -916,9 +925,7 @@ export function attachTraceViewer({
     renderers.F.setRead(fwd);
     renderers.R.setRead(rev);
 
-    if (fwd) parts.unshift(`${nameF} (${fwd.bases.length} bases)`);
-    if (rev) parts.splice(fwd ? 1 : 0, 0, `${nameR} (${rev.bases.length} bases)`);
-    if (metaEl) metaEl.textContent = parts.join('; ');
+    if (metaEl) metaEl.textContent = '';
 
     fitView();
     draw();

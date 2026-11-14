@@ -148,7 +148,7 @@ test('a synthetic outlier does not flatten neighboring peaks in balanced mode', 
   assert.equal(result.balanced.clipped, true);
   assert.ok(result.balanced.normal < 130, `Normal peak should be visible: ${JSON.stringify(result)}`);
   assert.equal(result.all.clipped, false);
-  assert.ok(result.all.normal > 160, `All-peaks mode should use the outlier height: ${JSON.stringify(result)}`);
+  assert.ok(result.all.normal > 145, `All-peaks mode should use the outlier height: ${JSON.stringify(result)}`);
   assert.ok(result.all.outlier > 48 && result.all.outlier < 65, `The outlier should fit: ${JSON.stringify(result)}`);
 }));
 
@@ -161,24 +161,26 @@ test('secondary peak calls are readable and selecting a marker opens the matchin
       return clear.apply(this, args);
     };
     CanvasRenderingContext2D.prototype.moveTo = function (x, y) {
-      if (this.canvas.id === 'traceCanvasR' && this.fillStyle === '#d97706' && y === 30.5) window.peakMarkers.push({ x, y: y + 3.5 });
+      if (this.canvas.id === 'traceCanvasR' && this.fillStyle === '#d97706' && y === 38.5) window.peakMarkers.push({ x, y: y + 3.5 });
       return move.call(this, x, y);
     };
   });
   await demo(page);
   assert.equal(await page.locator('#tracePeakInspector').isVisible(), true);
-  await page.getByLabel('Choose a peak').selectOption({ label: 'Reverse read 5: T / C' });
-  assert.match(await page.locator('#tracePeakPosition').textContent(), /Reverse read, original .ab1 base 5/);
-  assert.equal(await page.locator('#tracePeakDetail .trace-peak-bases').textContent(), 'T / C');
-  assert.match(await page.locator('#tracePeakRatio').textContent(), /46.43%/);
-  assert.match(await page.locator('#traceCanvasR').getAttribute('aria-label'), /original read base 5/);
+  await page.getByLabel('Choose a peak').selectOption({ label: 'Reverse read 8: T / G' });
+  assert.match(await page.locator('#tracePeakPosition').textContent(), /Reverse read, base 8/);
+  assert.equal(await page.locator('#tracePrimaryBase').textContent(), 'T');
+  assert.equal(await page.locator('#traceSecondaryBase').textContent(), 'G');
+  assert.equal(await page.locator('#tracePeakSelect option').count(), 2);
+  assert.match(await page.locator('#tracePeakRatio').textContent(), /50.68%/);
+  assert.match(await page.locator('#traceCanvasR').getAttribute('aria-label'), /original read base 8/);
   const markers = await page.evaluate(() => window.peakMarkers);
-  assert.ok(markers.length >= 2);
+  assert.ok(markers.length >= 1);
   await page.locator('#traceCanvasR').scrollIntoViewIfNeeded();
   const box = await page.locator('#traceCanvasR').boundingBox();
-  await page.mouse.click(box.x + markers[1].x, box.y + markers[1].y);
-  assert.match(await page.locator('#tracePeakPosition').textContent(), /original .ab1 base 6/);
-  assert.match(await page.locator('#tracePeakRatio').textContent(), /59.05%/);
+  await page.mouse.click(box.x + markers[0].x, box.y + markers[0].y);
+  assert.match(await page.locator('#tracePeakPosition').textContent(), /Reverse read, base 8/);
+  assert.match(await page.locator('#tracePeakRatio').textContent(), /50.68%/);
   await page.locator('#traceSection').screenshot({ path: '/tmp/sanger-peak-inspector.png', style: 'astro-dev-toolbar { display: none; }' });
   await page.getByRole('button', { name: 'Reset view' }).click();
   assert.equal(await page.getByLabel('Choose a peak').inputValue(), '');
@@ -366,7 +368,7 @@ test('local Flask smoke: bundled chromatograms assemble and export', { skip: !pr
   await page.screenshot({ path: '/tmp/sanger-demo-final-results.png', fullPage: true, style: 'astro-dev-toolbar { display: none; }' });
   assert.match(await page.locator('#strictReport').textContent(), /forward\s+1/);
   assert.equal(await page.locator('#fullReport').textContent(), await page.locator('#primerTrimReport').textContent());
-  await page.getByLabel('Choose a peak').selectOption({ label: 'Reverse read 5: T / C' });
+  await page.getByLabel('Choose a peak').selectOption({ label: 'Reverse read 8: T / G' });
   for (const [tab, id, position] of [['High confidence', 'strict', 16], ['Full merge', 'full', 44], ['Primer trimmed', 'primerTrim', 19]]) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await page.locator(`#${id} .conflict-base[data-conflict-index="1"]`).click();

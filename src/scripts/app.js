@@ -174,12 +174,12 @@ function updateTracePeakDetail(key, focus = false) {
   prompt.hidden = Boolean(peak);
   if (!peak) return;
   tracePeakSelect.value = key;
-  document.getElementById('tracePeakPosition').textContent = `${peak.direction} read, original .ab1 base ${peak.position}`;
+  document.getElementById('tracePeakPosition').textContent = `${peak.direction} read, base ${peak.position}`;
   document.getElementById('tracePrimaryBase').textContent = peak.primaryBase;
   document.getElementById('tracePrimaryBase').dataset.base = peak.primaryBase;
   document.getElementById('traceSecondaryBase').textContent = peak.secondaryBase;
   document.getElementById('traceSecondaryBase').dataset.base = peak.secondaryBase;
-  document.getElementById('tracePeakRatio').textContent = `Secondary peak: ${peak.percentage}% of primary height`;
+  document.getElementById('tracePeakRatio').textContent = `Secondary height: ${peak.percentage}%`;
   if (focus) {
     const position = peak.direction === 'Forward' ? { forward: peak.position } : { reverse: peak.position };
     traceViewer.focusPositions(position, false);

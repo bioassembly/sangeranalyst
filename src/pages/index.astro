@@ -169,21 +169,19 @@ const baseCodes = [
           <p id="tracePeakPrompt">Select a ◆ in a chromatogram or choose a peak to inspect its bases.</p>
           <div id="tracePeakDetail" class="trace-peak-detail" hidden>
             <span id="tracePeakPosition"></span>
-            <span class="trace-peak-order">Primary / secondary</span>
-            <span class="trace-peak-bases"><span id="tracePrimaryBase"></span><span aria-hidden="true"> / </span><span id="traceSecondaryBase"></span></span>
+            <span class="trace-peak-bases"><span>Primary <strong id="tracePrimaryBase"></strong></span><span>Secondary <strong id="traceSecondaryBase"></strong></span></span>
             <span id="tracePeakRatio"></span>
           </div>
-          <p class="trace-peak-note">Bases follow the displayed read orientation. Peak ratio uses the original signal.</p>
+          <p class="trace-peak-note">Peak height is shown as a percentage of the primary peak.</p>
         </div>
         <div id="traceWarn" class="trace-warn" style="display:none" role="alert"></div>
         <div class="small trace-meta">
           <span id="traceMeta"></span>
-          <span>Input read traces. Analyze to generate the final sequence and alignment below.</span>
           <ul class="trace-legend" aria-label="Chromatogram legend">
-            <li><span class="trace-base-legend"><span style="color:#16a34a">A</span> <span style="color:#2563eb">C</span> <span style="color:#111827">G</span> <span style="color:#dc2626">T</span></span> Base colors</li>
+            <li>Base colors: <span class="trace-base-legend"><span style="color:#16a34a">A</span> <span style="color:#2563eb">C</span> <span style="color:#111827">G</span> <span style="color:#dc2626">T</span></span></li>
             <li><span class="trace-peak-symbol">◆</span> Secondary peak</li>
-            <li>Shaded region: Mott trim</li>
-            <li>Scroll to zoom; drag to pan</li>
+            <li><span class="trace-trim-swatch" aria-hidden="true"></span> Shaded: Mott trimmed region</li>
+            <li>Scroll to zoom, drag to pan.</li>
           </ul>
         </div>
       </div>
