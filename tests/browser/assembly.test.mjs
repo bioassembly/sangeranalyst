@@ -93,6 +93,98 @@ test('demo loads both chromatograms without needing the analysis API', () => wit
   await page.locator('#traceSection').screenshot({ path: '/tmp/sanger-demo-chromatograms.png' });
 }));
 
+test('balanced scaling flags tall peaks and fit-all mode reveals their full height', () => withPage(async page => {
+  await demo(page);
+  await page.locator('#traceAmp').fill('4');
+  assert.equal(await page.locator('#traceScaleNote').isVisible(), true);
+  assert.match(await page.locator('#traceScaleNote').textContent(), /Fit all peaks/);
+  await page.getByLabel('Peak scaling').selectOption('all');
+  assert.equal(await page.locator('#traceScaleNote').isVisible(), false);
+  await page.getByRole('button', { name: 'Reset view' }).click();
+  assert.equal(await page.getByLabel('Peak scaling').inputValue(), 'balanced');
+  assert.equal(await page.locator('#traceAmp').inputValue(), '1');
+}));
+
+test('a synthetic outlier does not flatten neighboring peaks in balanced mode', () => withPage(async page => {
+  await page.goto(`${origin}/sangeranalyst/`);
+  const result = await page.evaluate(async () => {
+    const { attachTraceViewer } = await import('/sangeranalyst/src/scripts/traceviewer.js');
+    const outer = document.createElement('div');
+    const inner = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '600px';
+    canvas.style.height = '190px';
+    inner.append(canvas); outer.append(inner); document.body.append(outer);
+    const select = document.createElement('select');
+    select.add(new Option('Balanced', 'balanced'));
+    select.add(new Option('Fit all', 'all'));
+    const note = document.createElement('p');
+    const positions = Array.from({ length: 20 }, (_, i) => i * 20 + 10);
+    const signal = new Array(420).fill(0);
+    for (const [i, position] of positions.entries()) {
+      const height = i === 10 ? 10000 : 100;
+      signal[position - 1] = height / 2;
+      signal[position] = height;
+      signal[position + 1] = height / 2;
+    }
+    const zeros = new Array(420).fill(0);
+    const read = { bases: 'A'.repeat(20), ploc: positions, qual: new Array(20).fill(40), channels: { A: signal, C: zeros, G: zeros, T: zeros } };
+    const viewer = attachTraceViewer({ canvasF: canvas, scaleSelect: select, scaleNote: note });
+    viewer.setData(read, null, 'synthetic', '');
+    const peakY = index => {
+      const x = Math.round((index + 1) * canvas.clientWidth / 22);
+      const ctx = canvas.getContext('2d');
+      const pixels = ctx.getImageData(x - 4, 48, 9, 124).data;
+      for (let y = 0; y < 124; y++) for (let dx = 0; dx < 9; dx++) {
+        const i = (y * 9 + dx) * 4;
+        if (pixels[i + 3] > 50 && pixels[i + 1] > pixels[i] * 1.3 && pixels[i + 1] > pixels[i + 2] * 1.1) return y + 48;
+      }
+      return null;
+    };
+    const balanced = { normal: peakY(5), clipped: !note.hidden };
+    select.value = 'all'; select.dispatchEvent(new Event('change'));
+    return { balanced, all: { normal: peakY(5), outlier: peakY(10), clipped: !note.hidden } };
+  });
+  assert.equal(result.balanced.clipped, true);
+  assert.ok(result.balanced.normal < 130, `Normal peak should be visible: ${JSON.stringify(result)}`);
+  assert.equal(result.all.clipped, false);
+  assert.ok(result.all.normal > 160, `All-peaks mode should use the outlier height: ${JSON.stringify(result)}`);
+  assert.ok(result.all.outlier > 48 && result.all.outlier < 65, `The outlier should fit: ${JSON.stringify(result)}`);
+}));
+
+test('secondary peak calls are readable and selecting a marker opens the matching read base', () => withPage(async page => {
+  await page.addInitScript(() => {
+    const clear = CanvasRenderingContext2D.prototype.clearRect;
+    const move = CanvasRenderingContext2D.prototype.moveTo;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.id === 'traceCanvasR') window.peakMarkers = [];
+      return clear.apply(this, args);
+    };
+    CanvasRenderingContext2D.prototype.moveTo = function (x, y) {
+      if (this.canvas.id === 'traceCanvasR' && this.fillStyle === '#d97706' && y === 30.5) window.peakMarkers.push({ x, y: y + 3.5 });
+      return move.call(this, x, y);
+    };
+  });
+  await demo(page);
+  assert.equal(await page.locator('#tracePeakInspector').isVisible(), true);
+  await page.getByLabel('Choose a peak').selectOption({ label: 'Reverse read 5: T / C' });
+  assert.match(await page.locator('#tracePeakPosition').textContent(), /Reverse read, original .ab1 base 5/);
+  assert.equal(await page.locator('#tracePeakDetail .trace-peak-bases').textContent(), 'T / C');
+  assert.match(await page.locator('#tracePeakRatio').textContent(), /46.43%/);
+  assert.match(await page.locator('#traceCanvasR').getAttribute('aria-label'), /original read base 5/);
+  const markers = await page.evaluate(() => window.peakMarkers);
+  assert.ok(markers.length >= 2);
+  await page.locator('#traceCanvasR').scrollIntoViewIfNeeded();
+  const box = await page.locator('#traceCanvasR').boundingBox();
+  await page.mouse.click(box.x + markers[1].x, box.y + markers[1].y);
+  assert.match(await page.locator('#tracePeakPosition').textContent(), /original .ab1 base 6/);
+  assert.match(await page.locator('#tracePeakRatio').textContent(), /59.05%/);
+  await page.locator('#traceSection').screenshot({ path: '/tmp/sanger-peak-inspector.png', style: 'astro-dev-toolbar { display: none; }' });
+  await page.getByRole('button', { name: 'Reset view' }).click();
+  assert.equal(await page.getByLabel('Choose a peak').inputValue(), '');
+  assert.equal(await page.locator('#tracePeakDetail').isVisible(), false);
+}));
+
 test('chromatogram peaks stay out of the position and base labels at high peak height', () => withPage(async page => {
   await demo(page);
   const canvases = page.locator('#traceCanvasF, #traceCanvasR');
@@ -101,7 +193,7 @@ test('chromatogram peaks stay out of the position and base labels at high peak h
       const ctx = canvas.getContext('2d');
       const ratio = window.devicePixelRatio;
       return [
-        ctx.getImageData(0, 0, canvas.width, Math.floor(51 * ratio)).data,
+        ctx.getImageData(0, 0, canvas.width, Math.floor(36 * ratio)).data,
         ctx.getImageData(0, Math.ceil((canvas.clientHeight - 17) * ratio), canvas.width, Math.floor(17 * ratio)).data,
       ];
     });
@@ -111,13 +203,13 @@ test('chromatogram peaks stay out of the position and base labels at high peak h
     const ctx = canvas.getContext('2d');
     const ratio = window.devicePixelRatio;
     const regions = [
-      ctx.getImageData(0, 0, canvas.width, Math.floor(51 * ratio)).data,
+      ctx.getImageData(0, 0, canvas.width, Math.floor(36 * ratio)).data,
       ctx.getImageData(0, Math.ceil((canvas.clientHeight - 17) * ratio), canvas.width, Math.floor(17 * ratio)).data,
     ];
     return total + regions.reduce((sum, region, j) => sum + region.reduce((count, value, k) =>
       count + (value !== window.traceAnnotationBands[i][j][k] ? 1 : 0), 0), 0);
   }, 0));
-  assert.equal(changed, 0, 'Changing peak height must keep peaks inside the chart and away from labels.');
+  assert.equal(changed, 0, 'Changing peak height must keep traces away from the position, quality and base labels.');
   await page.locator('#traceSection').screenshot({ path: '/tmp/sanger-viewer-boundaries.png' });
   await page.getByRole('button', { name: 'Reset view' }).click();
   assert.equal(await page.locator('#traceAmp').inputValue(), '1');
@@ -238,8 +330,13 @@ test('busy requests lock controls and restore them after API failure', () => wit
 
 test('empty consensus and clipboard failure are explained visibly', () => withPage(async page => {
   await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } }));
-  await assemble(page, { outputs: { consensus_strict: '>empty\n\n# WARNING: no overlap\n', consensus_full: report }, warnings: ['No statistically validated overlap.'] });
-  assert.equal(await page.locator('#strictEmpty').isVisible(), true);
+  const warning = 'WARNING: No statistically significant overlap found between Forward and Reverse reads (candidate overlap 15 bp, 8 matches) — High Confidence Consensus is empty; verify both files come from the same amplicon.';
+  await assemble(page, { outputs: { consensus_strict: `>empty\n\n# ${warning}\n`, consensus_full: report }, warnings: [warning, 'Review mixed bases.'] });
+  assert.equal(await page.locator('#strict').isVisible(), true);
+  assert.equal(await page.locator('#strict').textContent(), 'No high-confidence consensus sequence could be made.');
+  assert.equal(await page.locator('#server-warn').textContent(), 'WARNING: No high-confidence consensus sequence could be made. Please verify both reads are from the same amplicon.\nReview mixed bases.');
+  const raw = await download(page, page.locator('.download-btn[data-target="strict"]'));
+  assert.match(raw.text, /candidate overlap 15 bp/);
   assert.equal(await page.locator('.copy-fasta-btn[data-target="strict"]').isDisabled(), true);
   await page.getByRole('tab', { name: 'Full merge', exact: true }).click();
   await page.locator('.copy-fasta-btn[data-target="full"]').click();
@@ -269,12 +366,14 @@ test('local Flask smoke: bundled chromatograms assemble and export', { skip: !pr
   await page.screenshot({ path: '/tmp/sanger-demo-final-results.png', fullPage: true, style: 'astro-dev-toolbar { display: none; }' });
   assert.match(await page.locator('#strictReport').textContent(), /forward\s+1/);
   assert.equal(await page.locator('#fullReport').textContent(), await page.locator('#primerTrimReport').textContent());
+  await page.getByLabel('Choose a peak').selectOption({ label: 'Reverse read 5: T / C' });
   for (const [tab, id, position] of [['High confidence', 'strict', 16], ['Full merge', 'full', 44], ['Primer trimmed', 'primerTrim', 19]]) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await page.locator(`#${id} .conflict-base[data-conflict-index="1"]`).click();
     assert.match(await page.locator('#traceReviewLabel').textContent(), new RegExp(`consensus base ${position}\\.`));
     assert.match(await page.locator('#traceCanvasF').getAttribute('aria-label'), /original read base 15/);
     assert.match(await page.locator('#traceCanvasR').getAttribute('aria-label'), /original read base 354/);
+    assert.equal(await page.locator('#tracePeakDetail').isVisible(), false);
     await page.locator('#traceSection').screenshot({ path: '/tmp/sanger-conflict-traces.png' });
     await page.getByRole('button', { name: 'Back to result' }).click();
     assert.equal(await page.locator(`#${id} .conflict-base[data-conflict-index="1"]`).evaluate(el => el === document.activeElement), true);

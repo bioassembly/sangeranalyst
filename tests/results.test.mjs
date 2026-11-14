@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, extractConflictSites, outputConflictSites, primerWarnings, extractSecondaryPeaks, renderSecondaryPeaksHtml } from '../src/scripts/results.js';
+import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, extractConflictSites, outputConflictSites, primerWarnings, extractSecondaryPeaks, renderSecondaryPeaksHtml, displayAnalysisWarnings } from '../src/scripts/results.js';
 import { extractCleanFasta, renderReportHtml } from '../src/scripts/sequtils.js';
 
 const alignment = [
@@ -199,4 +199,17 @@ test('alignment metric cards retain report denominators and safely handle legacy
   assert.match(html, /33.3%/);
   assert.equal(renderAlignmentStats({}), '');
   assert.doesNotMatch(renderAlignmentStats({ identity: '<img src=x>' }), /<img/);
+});
+
+test('only the statistical overlap warning is simplified for display', () => {
+  const warnings = [
+    'WARNING: No statistically significant overlap found between Forward and Reverse reads (candidate overlap 15 bp, 8 matches) — High Confidence Consensus is empty; verify both files come from the same amplicon.',
+    'WARNING: Forward and reverse reads do not overlap after quality trimming — High Confidence Consensus is empty, and Full Merge joins non-overlapping reads.',
+    'Review mixed bases before use.',
+  ];
+  assert.deepEqual(displayAnalysisWarnings(warnings), [
+    'WARNING: No high-confidence consensus sequence could be made. Please verify both reads are from the same amplicon.',
+    warnings[1], warnings[2],
+  ]);
+  assert.match(warnings[0], /candidate overlap 15 bp/);
 });

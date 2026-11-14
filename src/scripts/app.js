@@ -12,7 +12,7 @@ import {
   normalizePrimer,
 } from './sequtils.js';
 import { createRunState, sampleSlug } from './runstate.js';
-import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, outputConflictSites, renderSecondaryPeaksHtml, primerWarnings } from './results.js';
+import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, outputConflictSites, renderSecondaryPeaksHtml, primerWarnings, displayAnalysisWarnings } from './results.js';
 
 const runState = createRunState();
 let busy = false;
@@ -163,6 +163,43 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideToolti
 // ==================== CHROMATOGRAM TRACE VIEWER ===================
 const traceSection = document.getElementById('traceSection');
 const traceMeta = document.getElementById('traceMeta');
+const tracePeakSelect = document.getElementById('tracePeakSelect');
+let tracePeaks = new Map();
+
+function updateTracePeakDetail(key, focus = false) {
+  const peak = tracePeaks.get(key);
+  const detail = document.getElementById('tracePeakDetail');
+  const prompt = document.getElementById('tracePeakPrompt');
+  detail.hidden = !peak;
+  prompt.hidden = Boolean(peak);
+  if (!peak) return;
+  tracePeakSelect.value = key;
+  document.getElementById('tracePeakPosition').textContent = `${peak.direction} read, original .ab1 base ${peak.position}`;
+  document.getElementById('tracePrimaryBase').textContent = peak.primaryBase;
+  document.getElementById('tracePrimaryBase').dataset.base = peak.primaryBase;
+  document.getElementById('traceSecondaryBase').textContent = peak.secondaryBase;
+  document.getElementById('traceSecondaryBase').dataset.base = peak.secondaryBase;
+  document.getElementById('tracePeakRatio').textContent = `Secondary peak: ${peak.percentage}% of primary height`;
+  if (focus) {
+    const position = peak.direction === 'Forward' ? { forward: peak.position } : { reverse: peak.position };
+    traceViewer.focusPositions(position, false);
+    document.getElementById('traceReview').hidden = true;
+    traceReturnTarget = null;
+  }
+}
+
+function updateTracePeaks(peaks) {
+  const selected = tracePeakSelect.value;
+  tracePeaks = new Map(peaks.map(peak => [peak.key, peak]));
+  tracePeakSelect.replaceChildren(new Option('Choose a peak', ''));
+  for (const peak of peaks) {
+    tracePeakSelect.add(new Option(`${peak.direction} read ${peak.position}: ${peak.primaryBase} / ${peak.secondaryBase}`, peak.key));
+  }
+  document.getElementById('tracePeakInspector').hidden = peaks.length === 0;
+  updateTracePeakDetail(tracePeaks.has(selected) ? selected : '');
+}
+
+tracePeakSelect.addEventListener('change', () => updateTracePeakDetail(tracePeakSelect.value, true));
 
 const traceViewer = attachTraceViewer({
   canvasF: document.getElementById('traceCanvasF'),
@@ -173,7 +210,10 @@ const traceViewer = attachTraceViewer({
   resetBtn: document.getElementById('traceReset'),
   ampSlider: document.getElementById('traceAmp'),
   scrollBar: document.getElementById('traceScrollBar'),
-
+  scaleSelect: document.getElementById('traceScale'),
+  scaleNote: document.getElementById('traceScaleNote'),
+  onPeaksChanged: updateTracePeaks,
+  onPeakSelected: key => updateTracePeakDetail(key, true),
 });
 
 // Sync initial and live Mott / Secondary-peak parameters with input chromatograms
@@ -230,6 +270,7 @@ async function refreshTraces() {
   if (myGen !== traceRefreshGen) return;
 
   traceSection.style.display = 'block';
+  tracePeakSelect.value = '';
   const overlapStats = traceViewer.setData(fwd, rev, f?.name ?? '', r?.name ?? '');
 
   const labelR = document.getElementById('traceLabelR');
@@ -419,6 +460,8 @@ function invalidateResults() {
   const hadResult = runState.result !== null;
   runState.invalidate();
   traceViewer.clearFocus();
+  tracePeakSelect.value = '';
+  updateTracePeakDetail('');
   document.getElementById('traceReview').hidden = true;
   traceReturnTarget = null;
   if (hadResult) {
@@ -481,8 +524,10 @@ function renderOutput(id, report, alignmentReport = report) {
   conflictViews.set(id, { ...conflicts, selected: 0 });
   const seqEl = document.getElementById(id);
   seqEl.innerHTML = fasta.seq ? renderConsensusHtml(fasta.fasta, conflicts.rows) : '';
-  seqEl.hidden = !fasta.seq;
-  document.getElementById(`${id}Empty`).hidden = Boolean(fasta.seq);
+  if (id === 'strict' && !fasta.seq) seqEl.textContent = 'No high-confidence consensus sequence could be made.';
+  seqEl.hidden = !fasta.seq && id !== 'strict';
+  const empty = document.getElementById(`${id}Empty`);
+  if (empty) empty.hidden = Boolean(fasta.seq);
   const alignment = extractReadAlignment(alignmentReport);
   document.getElementById(`${id}Report`).innerHTML = alignment.text
     ? renderAlignmentHtml(alignment.text, conflicts.rows)
@@ -522,6 +567,8 @@ function inspectConflict(id, index, source) {
     setStatus('Could not locate this conflict in the loaded chromatograms. Review its read positions in the downloaded report.', true);
     return;
   }
+  tracePeakSelect.value = '';
+  updateTracePeakDetail('');
   view.selected = index;
   renderConflictControls(id);
   const label = resultTabs.find(tab => tab.dataset.output === id).textContent;
@@ -566,6 +613,8 @@ document.getElementById('returnToResult').addEventListener('click', () => {
 document.getElementById('traceReset').addEventListener('click', () => {
   document.getElementById('traceReview').hidden = true;
   traceReturnTarget = null;
+  tracePeakSelect.value = '';
+  updateTracePeakDetail('');
 });
 
 function renderResults(result) {
@@ -583,7 +632,7 @@ function renderResults(result) {
   primerStatus.textContent = notes.join('\n');
   primerStatus.hidden = notes.length === 0;
   const banner = document.getElementById('server-warn');
-  banner.textContent = result.warnings.join('\n');
+  banner.textContent = displayAnalysisWarnings(result.warnings).join('\n');
   banner.hidden = result.warnings.length === 0;
   document.getElementById('staleResultNotice').hidden = true;
   resultsBox.dataset.stale = 'false';

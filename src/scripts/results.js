@@ -3,6 +3,12 @@ import { extractCleanFasta } from './sequtils.js';
 const READ_ROW = /^(forward|reverse(?:_rc)?)(\s+\d+\s+)([ACGTNRYKMSWBDHV-]+)(\s+\d+\s*)$/i;
 const escapeHtml = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+export function displayAnalysisWarnings(warnings) {
+  return warnings.map(warning => /^\s*(?:WARNING:\s*)?No statistically significant overlap found between Forward and Reverse reads\b/i.test(warning)
+    ? 'WARNING: No high-confidence consensus sequence could be made. Please verify both reads are from the same amplicon.'
+    : warning);
+}
+
 // Preserve the server's labels, positions, gaps, spacing and match markers.
 // Secondary-peak tables, primer matches and report commentary are excluded.
 export function extractReadAlignment(report) {

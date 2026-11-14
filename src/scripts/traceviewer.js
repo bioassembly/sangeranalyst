@@ -372,6 +372,18 @@ function computeScaleMax(channels) {
   return Math.max(maximum, 10);
 }
 
+// Keep all channels on the same linear scale within a read. The balanced mode
+// uses typical called peaks, so a single outlier does not flatten its neighbors.
+export function calculateTraceScale(heights, visibleMax, fullMax, amplitude, mode) {
+  const usable = heights.filter(value => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+  const magnification = Number.isFinite(amplitude) && amplitude > 0 ? amplitude : 1;
+  const typical = usable.length >= 2 ? usable[Math.floor((usable.length - 1) * 0.75)] * 1.8 : visibleMax * 1.05;
+  const scale = mode === 'all'
+    ? Math.max(fullMax / magnification, visibleMax * 1.05, 1)
+    : Math.max(typical / magnification, 1);
+  return { scale, clipped: visibleMax > scale };
+}
+
 function qualColor(q) {
   return q >= 40 ? QUAL_COLORS.good : q >= 20 ? QUAL_COLORS.mid : QUAL_COLORS.bad;
 }
@@ -392,6 +404,7 @@ function createReadRenderer(canvas) {
   let colToSample = () => 0;
   let sampleCount = 1;
   let scaleMax = 10;
+  let scaleMode = 'balanced';
 
   function setRead(r) {
     read = r;
@@ -410,6 +423,7 @@ function createReadRenderer(canvas) {
   }
 
   function setAmplitude(v) { amp = v; }
+  function setScaleMode(mode) { scaleMode = mode === 'all' ? 'all' : 'balanced'; }
 
   function draw(view) {
     if (!read || !canvas) return;
@@ -534,19 +548,12 @@ function createReadRenderer(canvas) {
         ctx.lineTo(px - 3.5, dy);
         ctx.closePath();
         ctx.fill();
-        if (spacing >= 18) {
-          ctx.font = '700 8px monospace';
-          ctx.textAlign = 'center';
-          const label = `${sp.primaryBase}/${sp.secondaryBase}`;
-          const halfLabel = ctx.measureText(label).width / 2;
-          if (px >= halfLabel && px <= w - halfLabel) ctx.fillText(label, px, dy + 11);
-        }
       }
     }
 
     // 5. Traces
-    // Fit tall visible peaks when the height control would otherwise cut them
-    // off. All four channels in one read share this scale.
+    // Estimate a common linear scale from called bases in this view; report
+    // tall peaks that exceed it so their full height can still be inspected.
     const sampleStart = colToSample(view.col);
     const sampleEnd = colToSample(view.col + w * view.colsPerPx);
     const from = Math.max(0, Math.floor(Math.min(sampleStart, sampleEnd)));
@@ -556,7 +563,17 @@ function createReadRenderer(canvas) {
       if (!values?.length) continue;
       for (let i = from; i <= to && i < values.length; i++) visibleMax = Math.max(visibleMax, values[i]);
     }
-    const displayScale = Math.max(scaleMax / amp, visibleMax * 1.05, 1);
+    const heights = [];
+    const lastCol = view.col + w * view.colsPerPx;
+    for (let i = 0; i < read.bases.length; i++) {
+      if (colOf[i] < view.col || colOf[i] > lastCol) continue;
+      const sample = read.ploc[i];
+      let height = 0;
+      for (const values of Object.values(read.channels)) height = Math.max(height, values?.[sample] || 0);
+      if (height > 0) heights.push(height);
+    }
+    const { scale: displayScale, clipped } = calculateTraceScale(heights, visibleMax, scaleMax, amp, scaleMode);
+    const overflow = new Uint8Array(w + 1);
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, padTop, w, plotH + 1);
@@ -573,12 +590,27 @@ function createReadRenderer(canvas) {
         if (s === null) { started = false; continue; }
         const s0 = Math.floor(s), s1 = Math.min(s0 + 1, sampleCount - 1);
         const v = values[s0] + (values[s1] - values[s0]) * (s - s0);
+        if (v > displayScale) overflow[px] = 1;
         const y = baseline - (v / displayScale) * plotH;
         if (!started) { ctx.moveTo(px, y); started = true; } else { ctx.lineTo(px, y); }
       }
       ctx.stroke();
     }
     ctx.restore();
+    if (clipped) {
+      ctx.font = '700 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#a15c07';
+      let start = -1;
+      for (let px = 0; px <= w + 1; px++) {
+        if (overflow[px] && start < 0) start = px;
+        if (!overflow[px] && start >= 0) {
+          const center = (start + px - 1) / 2;
+          if (center >= 5 && center <= w - 5) ctx.fillText('▲', center, padTop + 9);
+          start = -1;
+        }
+      }
+    }
 
     // 6. Base labels, colored by base (slightly muted in Mott-trimmed tails)
     if (spacing >= 9) {
@@ -606,9 +638,22 @@ function createReadRenderer(canvas) {
       ctx.lineWidth = 1.5;
       ctx.strokeRect(px - bandWidth / 2, 1, bandWidth, h - 2);
     }
+    return { clipped };
   }
 
-  return { draw, setAmplitude, setRead };
+  function peakAt(x, y, view) {
+    if (!read?.secPeakByIdx || Math.abs(y - (12 + (read.qual ? 22 : 6))) > 10) return null;
+    let nearest = null;
+    let distance = Math.min(9, Math.max(4, 0.5 / view.colsPerPx));
+    for (const [index, peak] of read.secPeakByIdx) {
+      const px = (colOf[index] - view.col) / view.colsPerPx;
+      const candidate = Math.abs(px - x);
+      if (candidate <= distance) { nearest = peak; distance = candidate; }
+    }
+    return nearest;
+  }
+
+  return { draw, peakAt, setAmplitude, setScaleMode, setRead };
 }
 
 function cloneRawRead(r) {
@@ -631,6 +676,10 @@ export function attachTraceViewer({
   resetBtn,
   ampSlider,
   scrollBar,
+  scaleSelect,
+  scaleNote,
+  onPeaksChanged,
+  onPeakSelected,
 }) {
   let rawReads = { F: null, R: null };
   let reads = { F: null, R: null };
@@ -697,8 +746,9 @@ export function attachTraceViewer({
   }
 
   function draw() {
-    renderers.F.draw({ ...view, col: view.col + focusOffsets.F });
-    renderers.R.draw({ ...view, col: view.col + focusOffsets.R });
+    const f = renderers.F.draw({ ...view, col: view.col + focusOffsets.F });
+    const r = renderers.R.draw({ ...view, col: view.col + focusOffsets.R });
+    if (scaleNote) scaleNote.hidden = !(f?.clipped || r?.clipped);
     syncScrollBar();
   }
 
@@ -763,6 +813,12 @@ export function attachTraceViewer({
         spR.map(p => [revComplemented ? (L - 1 - p.rawIndex) : p.rawIndex, p])
       );
     }
+    const peaks = [];
+    for (const [key, direction] of [['F', 'Forward'], ['R', 'Reverse']]) {
+      const items = [...(reads[key]?.secPeakByIdx || [])].sort(([a], [b]) => a - b);
+      for (const [, peak] of items) peaks.push({ ...peak, direction, key: `${key}:${peak.rawIndex}` });
+    }
+    onPeaksChanged?.(peaks);
   }
 
   function zoom(factor, centerRatio = 0.5) {
@@ -876,6 +932,9 @@ export function attachTraceViewer({
     if (ampSlider) ampSlider.value = '1';
     renderers.F.setAmplitude(1);
     renderers.R.setAmplitude(1);
+    if (scaleSelect) scaleSelect.value = 'balanced';
+    renderers.F.setScaleMode('balanced');
+    renderers.R.setScaleMode('balanced');
     fitView();
     draw();
   });
@@ -883,6 +942,11 @@ export function attachTraceViewer({
     const amp = parseFloat(ampSlider.value);
     renderers.F.setAmplitude(amp);
     renderers.R.setAmplitude(amp);
+    draw();
+  });
+  scaleSelect?.addEventListener('change', () => {
+    renderers.F.setScaleMode(scaleSelect.value);
+    renderers.R.setScaleMode(scaleSelect.value);
     draw();
   });
 
@@ -893,15 +957,18 @@ export function attachTraceViewer({
     draw();
   });
 
-  function bindCanvas(canvas) {
+  function bindCanvas(canvas, key) {
     if (!canvas) return;
     const pointers = new Map();
     let pinchDist = 0;
+    let tapStart = null;
 
     canvas.addEventListener('pointerdown', (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       canvas.setPointerCapture?.(e.pointerId);
+      if (pointers.size === 1) tapStart = { id: e.pointerId, x: e.clientX, y: e.clientY };
       if (pointers.size === 2) {
+        tapStart = null;
         const [p1, p2] = [...pointers.values()];
         pinchDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
       }
@@ -911,6 +978,7 @@ export function attachTraceViewer({
       if (!pointers.has(e.pointerId)) return;
       const prev = pointers.get(e.pointerId);
       const curr = { x: e.clientX, y: e.clientY };
+      if (tapStart && Math.hypot(curr.x - tapStart.x, curr.y - tapStart.y) > 5) tapStart = null;
 
       if (pointers.size === 1) {
         const dx = curr.x - prev.x;
@@ -933,6 +1001,14 @@ export function attachTraceViewer({
     });
 
     const releasePointer = (e) => {
+      if (e.type === 'pointerup' && tapStart?.id === e.pointerId && pointers.size === 1) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * canvas.clientWidth / rect.width;
+        const y = (e.clientY - rect.top) * canvas.clientHeight / rect.height;
+        const peak = renderers[key].peakAt(x, y, { ...view, col: view.col + focusOffsets[key] });
+        if (peak) onPeakSelected?.(`${key}:${peak.rawIndex}`);
+      }
+      if (tapStart?.id === e.pointerId) tapStart = null;
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchDist = 0;
     };
@@ -948,8 +1024,8 @@ export function attachTraceViewer({
     }, { passive: false });
   }
 
-  bindCanvas(canvasF);
-  bindCanvas(canvasR);
+  bindCanvas(canvasF, 'F');
+  bindCanvas(canvasR, 'R');
   if (typeof window !== 'undefined') {
     window.addEventListener('resize', () => { clampView(); draw(); });
   }
@@ -988,6 +1064,8 @@ export function attachTraceViewer({
         ctx.clearRect(0, 0, c.width, c.height);
       }
       if (metaEl) metaEl.textContent = '';
+      onPeaksChanged?.([]);
+      if (scaleNote) scaleNote.hidden = true;
     },
   };
 }

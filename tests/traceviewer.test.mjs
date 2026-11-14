@@ -12,6 +12,7 @@ import {
   detectTraceSecondaryPeaks,
   attachTraceViewer,
   resolveTracePosition,
+  calculateTraceScale,
 } from '../src/scripts/traceviewer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -92,6 +93,19 @@ test('parseABIF parses bundled demo .ab1 files with numeric Phred scores', () =>
   for (const ch of ['G', 'A', 'T', 'C']) {
     assert.ok(fwd.channels[ch].length > 1000, `channel ${ch} has trace samples`);
   }
+});
+
+test('typical-peak scaling keeps normal peaks visible despite a tall outlier', () => {
+  const heights = [98, 100, 102, 105, 10000];
+  const balanced = calculateTraceScale(heights, 10000, 10000, 1, 'balanced');
+  assert.ok(balanced.scale >= 105 && balanced.scale <= 250);
+  assert.equal(balanced.clipped, true);
+  const fitAll = calculateTraceScale(heights, 10000, 10000, 1, 'all');
+  assert.ok(fitAll.scale > 10000);
+  assert.equal(fitAll.clipped, false);
+  assert.ok(calculateTraceScale(heights, 10000, 10000, 2, 'balanced').scale < balanced.scale);
+  assert.equal(calculateTraceScale([], 200, 200, 1, 'balanced').clipped, false);
+  assert.equal(calculateTraceScale([100], 100, 100, 1, 'balanced').clipped, false);
 });
 
 test('report trace coordinates map through the original read for either display orientation', () => {
