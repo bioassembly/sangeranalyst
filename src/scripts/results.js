@@ -52,27 +52,29 @@ export function extractPrimerReadAlignment(report, fullReport) {
   const blocks = alignment.text.split('\n\n');
   const width = blocks.reduce((sum, block) => sum + block.split('\n')[0].match(READ_ROW)[3].length, 0);
   if (width !== extractCleanFasta(fullReport).seq.length) return empty;
-  let offset = 0, identity = 0, gaps = 0;
+  const forwardRows = blocks.map(block => block.split('\n')[0].match(READ_ROW));
+  const reverseRows = blocks.map(block => block.split('\n')[2].match(READ_ROW));
+  const forward = forwardRows.map(row => row[3]).join('');
+  const reverse = reverseRows.map(row => row[3]).join('');
+  let forwardPosition = Number(forwardRows[0][2].trim()) + forward.slice(0, bounds.start).replace(/-/g, '').length;
+  let reversePosition = Number(reverseRows[0][2].trim()) + reverse.slice(0, bounds.start).replace(/-/g, '').length;
+  let identity = 0, gaps = 0;
   const cropped = [];
-  for (const block of blocks) {
-    const lines = block.split('\n');
-    const forward = lines[0].match(READ_ROW), reverse = lines[2].match(READ_ROW);
-    const start = Math.max(0, bounds.start - offset);
-    const end = Math.min(forward[3].length, bounds.end - offset);
-    offset += forward[3].length;
-    if (start >= end) continue;
-    const f = forward[3].slice(start, end), r = reverse[3].slice(start, end);
+  for (let start = bounds.start; start < bounds.end; start += 60) {
+    const end = Math.min(bounds.end, start + 60);
+    const f = forward.slice(start, end), r = reverse.slice(start, end);
     const markers = [...f].map((base, column) => {
       if (base === '-' || r[column] === '-') { gaps++; return ' '; }
       if (base === r[column]) { identity++; return '|'; }
       return '.';
     }).join('');
-    const row = (source, bases) => {
-      const position = Number(source[2].trim()) + source[3].slice(0, start).replace(/-/g, '').length;
+    const row = (label, position, bases) => {
       const last = position + bases.replace(/-/g, '').length - 1;
-      return `${source[1].padEnd(12)} ${String(position).padStart(7)} ${bases} ${Math.max(position, last)}`;
+      return `${label.padEnd(12)} ${String(position).padStart(7)} ${bases} ${Math.max(position, last)}`;
     };
-    cropped.push([row(forward, f), ' '.repeat(21) + markers, row(reverse, r)].join('\n'));
+    cropped.push([row(forwardRows[0][1], forwardPosition, f), ' '.repeat(21) + markers, row(reverseRows[0][1], reversePosition, r)].join('\n'));
+    forwardPosition += f.replace(/-/g, '').length;
+    reversePosition += r.replace(/-/g, '').length;
   }
   const length = bounds.end - bounds.start;
   const metric = count => `${count}/${length} (${(100 * count / length).toFixed(1)}%)`;
@@ -162,7 +164,8 @@ function renderSequenceMap(rows, length, label, selection = null) {
     }).join('');
     return `<div class="primer-map-row"><span>${row.label}</span><div class="primer-map-track">${row.end > row.start ? `<span class="primer-map-segment ${row.className}" style="${style(row.start, row.end)}"></span>${marks}` : ''}</div><span>${row.end > row.start ? `${row.start + 1}–${row.end}` : 'None'}</span></div>`;
   }).join('');
-  const legend = '<div class="map-key" aria-label="Coverage map legend"><span><i class="map-used"></i>Used for consensus</span><span><i class="map-not-used"></i>Not used</span><span><i class="map-mismatch"></i>Mismatch</span><span><i class="map-mixed"></i>Mixed base</span><span><i class="map-gap"></i>Gap</span><span><i class="map-uncalled"></i>Uncalled</span></div>';
+  const primerKey = rows.some(row => row.className === 'primer-binding') ? '<span><i class="primer-binding"></i>Primer</span>' : '';
+  const legend = `<div class="map-key" aria-label="Coverage map legend"><span><i class="map-used"></i>Used for consensus</span><span><i class="map-not-used"></i>Not used</span>${primerKey}<span><i class="map-mismatch"></i>Mismatch</span><span><i class="map-mixed"></i>Mixed base</span><span><i class="map-gap"></i>Gap</span><span aria-label="Uncalled bases"><code class="map-n-key">NNNN</code></span></div>`;
   return `<div class="primer-map" role="group" aria-label="${label}"><div class="sequence-map-body">${tracks}${boundaries}</div><div class="primer-map-axis"><span>${length} bp</span></div>${legend}</div>`;
 }
 
@@ -202,14 +205,24 @@ export function renderPrimerAlignmentHtml(report, fullReport) {
   });
   const bounds = primerTrimBounds(report, fullReport);
   if (!sites.length && !bounds) return '<p class="small primer-map-note">No confidently anchored primer sites were returned. Review the primer warnings.</p>';
-  const mapRows = sites.map(site => ({ label: `${site.direction} ${site.direction === 'Forward' ? '→' : '←'}`, start: site.start - 1, end: site.end, className: 'primer-binding' }));
-  mapRows.push({ label: 'Consensus', start: bounds?.start ?? 0, end: bounds?.end ?? 0, className: 'primer-retained', marks: mapAnnotations(fullReport).consensus });
+  const readRows = extractReadAlignment(fullReport).text.split('\n').map(line => line.match(READ_ROW)).filter(Boolean);
+  const annotations = mapAnnotations(fullReport);
+  const mapRows = [];
+  for (const [read, label, className] of [['forward', 'Forward →', 'read-forward'], ['reverse', 'Reverse ←', 'read-reverse']]) {
+    const sequence = readRows.filter(row => row[1].toLowerCase().startsWith(read)).map(row => row[3]).join('');
+    const start = sequence.search(/[^-]/);
+    if (sequence.length === full.length && start >= 0) mapRows.push({ label, start, end: sequence.replace(/-+$/, '').length, className, marks: annotations[read] });
+  }
+  const primerRowOffset = mapRows.length;
+  mapRows.push(...sites.map(site => ({ label: `Primer ${site.direction === 'Forward' ? 'F →' : 'R ←'}`, start: site.start - 1, end: site.end, className: 'primer-binding' })));
+  mapRows.push({ label: 'Consensus', start: bounds?.start ?? 0, end: bounds?.end ?? 0, className: 'primer-retained', marks: annotations.consensus });
   const details = sites.map((site, siteIndex) => {
     const heading = site.direction === 'Forward' ? '# Primer Forward Alignment' : '# Primer Reverse Alignment';
     const section = source.slice(source.indexOf(heading) + heading.length).split(/# Primer (?:Forward|Reverse) Alignment|# No significant secondary|# ==== Significant secondary/)[0];
     const lines = source.includes(heading) ? section.split(/\r?\n/) : [];
     const blocks = [];
-    mapRows[siteIndex].marks = [];
+    const primerRow = mapRows[primerRowOffset + siteIndex];
+    primerRow.marks = [];
     for (let i = 0; i < lines.length - 2; i++) {
       const consensus = lines[i].match(/^consensus\s+(\d+)\s+([ACGTNRYKMSWBDHV-]+)\s+(\d+)\s*$/i);
       const primer = lines[i + 2].match(/^(primer_f|primer_r_rc)\s+(\d+)\s+([ACGTNRYKMSWBDHV-]+)\s+(\d+)\s*$/i);
@@ -224,7 +237,7 @@ export function renderPrimerAlignmentHtml(report, fullReport) {
           : base === 'N' || opposite === 'N' ? 'uncalled' : markers[column] !== '|' ? 'mismatch' : '';
         if (type) {
           const start = Math.min(position, site.end - 1);
-          mapRows[siteIndex].marks.push({ start, end: start + 1, type });
+          primerRow.marks.push({ start, end: start + 1, type });
         }
         if (base !== '-') position++;
       }

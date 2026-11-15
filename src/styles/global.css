@@ -1028,15 +1028,16 @@ pre .amb{
 .primer-map-row > span:first-child { white-space: nowrap; }
 .primer-map-track { position: relative; height: 16px; border-radius: 3px; background: var(--result-line); overflow: hidden; }
 .primer-map-segment { position: absolute; height: 100%; min-width: 2px; border-radius: 3px; }
-.primer-binding { background: #718096; }
-.primer-retained { background: var(--accent); }
-.read-forward { background: #3578bd; }
-.read-reverse { background: #438784; }
+.primer-binding { background: #c7b9df; }
+.primer-retained { background: #86abd2; }
+.read-forward { background: #8eb6d9; }
+.read-reverse { background: #9ac8bd; }
 .map-site { position: absolute; height: 100%; min-width: 2px; }
-.map-mismatch { background: #d4554e; }
-.map-mixed { background: #e4b02c; }
+.map-mismatch { background: #9f1239; }
+.map-mixed { background: #754900; }
 .map-gap { background: #fff; }
-.map-uncalled { background: #9a7bc2; }
+.map-uncalled { background: #642487; }
+.map-n-key { color: #642487; font-size: 11px; font-weight: 600; }
 .map-key { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 14px; color: var(--result-muted); font-size: 11px; line-height: 1.5; }
 .map-key > span { display: inline-flex; align-items: center; gap: 5px; }
 .map-key i { display: inline-block; width: 10px; height: 10px; box-sizing: border-box; border-radius: 1px; }

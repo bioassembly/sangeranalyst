@@ -33,8 +33,8 @@ const primerFull = '>full\nACGTTTGCAAGCTTAGGCTGCA\n';
 test('primer map uses server anchors and retained span with full-merge alignment coordinates', () => {
   const html = renderPrimerAlignmentHtml(primerReport, primerFull);
   const text = html.replace(/<[^>]*>/g, '');
-  assert.match(text, /Forward →1–4/);
-  assert.match(text, /Reverse ←19–22/);
+  assert.match(text, /Primer F →1–4/);
+  assert.match(text, /Primer R ←19–22/);
   assert.match(text, /Consensus5–18/);
   assert.match(text, /Full merge\s+19 TGCA 22/);
   assert.match(text, /Primer R RC\s+1 TGCA 4/);
@@ -47,7 +47,7 @@ test('primer map uses server anchors and retained span with full-merge alignment
 test('primer map handles fallback ends, missing alignments, and invalid anchors without inventing sites', () => {
   const single = primerReport.replace(/# Reverse primer anchored span[^\n]*\n/, '');
   assert.match(renderPrimerAlignmentHtml(single, primerFull), /Consensus<\/span>.*5–18/);
-  assert.doesNotMatch(renderPrimerAlignmentHtml(single, primerFull), /Reverse ←/);
+  assert.doesNotMatch(renderPrimerAlignmentHtml(single, primerFull), /Primer R ←/);
   assert.match(renderPrimerAlignmentHtml('# Forward primer anchored span [1 - 4]', primerFull), /did not include a base alignment/);
   for (const source of ['', '# Forward primer anchored span [0 - 4]', '# Reverse primer anchored span [19 - 999]']) {
     assert.match(renderPrimerAlignmentHtml(source, primerFull), /No confidently anchored primer sites/);
@@ -237,6 +237,27 @@ test('primer-trimmed read alignment crops columns, retains read coordinates, and
   const html = renderAlignmentHtml(trimmed.text, sites);
   assert.equal((html.match(/data-conflict-index="0"/g) || []).length, 3);
   assert.equal(html.replace(/<[^>]*>/g, ''), trimmed.text);
+});
+
+test('primer-trimmed alignment reflows across server block boundaries without shifting read positions', () => {
+  const sequence = 'ACGT'.repeat(40);
+  const blocks = [];
+  for (let offset = 0; offset < sequence.length; offset += 60) {
+    const bases = sequence.slice(offset, offset + 60);
+    blocks.push(`forward ${offset + 1} ${bases} ${offset + bases.length}\n${'|'.repeat(bases.length)}\nreverse_rc ${offset + 1} ${bases} ${offset + bases.length}`);
+  }
+  const full = `>full\n${sequence}\n\n${blocks.join('\n\n')}`;
+  const trimmed = `>trimmed\n${sequence.slice(25, 140)}\n\n# Forward primer anchored span [1 - 25]\n# Reverse primer anchored span [141 - 160]\n`;
+  const alignment = extractPrimerReadAlignment(trimmed, full);
+  const rows = alignment.text.split('\n').filter(line => line.startsWith('forward'));
+  assert.deepEqual(rows.map(line => line.match(/\d+\s+([A-Z-]+)\s+\d+/)[1].length), [60, 55]);
+  assert.match(rows[0], /forward\s+26 .* 85$/);
+  assert.match(rows[1], /forward\s+86 .* 140$/);
+  assert.equal(alignment.identity, '115/115 (100.0%)');
+  const html = renderPrimerAlignmentHtml(trimmed, full);
+  assert.match(html.replace(/<[^>]*>/g, ''), /Forward →1–160Reverse ←1–160Primer F →1–25Primer R ←141–160Consensus26–140/);
+  assert.match(html, /<i class="primer-binding"><\/i>Primer/);
+  assert.match(html, /NNNN/);
 });
 
 test('full-merge map shows read coverage and overlap with one solid length dimension', () => {

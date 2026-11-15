@@ -369,6 +369,16 @@ test('local Flask smoke: bundled chromatograms assemble and export', { skip: !pr
   assert.equal(await page.locator('#primerOutcome').isVisible(), false);
   await page.getByRole('tab', { name: 'Primer trimmed', exact: true }).click();
   assert.match(await page.locator('#primerTrimReport').textContent(), /forward\s+1/);
+  assert.deepEqual(await page.locator('#primerBindingResults .primer-map-row').allTextContents(), [
+    'Forward →29–429', 'Reverse ←1–391', 'Primer F →2–25', 'Primer R ←408–428', 'Consensus26–407',
+  ]);
+  const trimmedColumns = (await page.locator('#primerTrimReport').textContent()).split('\n')
+    .filter(line => line.startsWith('forward')).map(line => line.match(/\d+\s+([A-Z-]+)\s+\d+/)[1].length);
+  assert.deepEqual(trimmedColumns, [60, 60, 60, 60, 60, 60, 22]);
+  assert.match(await page.locator('#primerBindingResults .map-key').textContent(), /Primer/);
+  assert.match(await page.locator('#primerBindingResults .map-key').textContent(), /NNNN/);
+  await page.locator('#primerBindingResults .primer-map').screenshot({ path: '/tmp/sanger-demo-primer-map.png' });
+  await page.locator('#primerTrimReport').screenshot({ path: '/tmp/sanger-demo-trimmed-alignment.png' });
   assert.doesNotMatch(await page.locator('#results').textContent(), /anchored span/);
   const fasta = await download(page, page.locator('.download-fasta-btn[data-target="primerTrim"]'));
   assert.match(fasta.text.split('\n').slice(1).join(''), /^[ACGTNRYKMSWBDHV]+$/);
@@ -514,11 +524,14 @@ consensus       1 TGCA    4
 primer_r_rc     1 TGCA    4
 `;
   await assemble(page, { ...fixture, warnings: [], outputs: {
-    ...fixture.outputs, consensus_full: '>full\nACGTTTGCAAGCTTAGGCTGCA\n', primer_trim: primerReport,
+    ...fixture.outputs, consensus_full: '>full\nACGTTTGCAAGCTTAGGCTGCA\n\nforward 1 --GTTTGCAAGCTTAGGCTGCA 20\n            ||||||||||||||||||\nreverse_rc 1 ACGTTTGCAAGCTTAGGCT--- 19\n', primer_trim: primerReport,
   } });
   await page.getByRole('tab', { name: 'Primer trimmed', exact: true }).click();
   assert.equal(await page.getByRole('heading', { name: 'Primer binding sites' }).isVisible(), true);
   assert.match(await page.locator('#primerBindingResults .primer-map').textContent(), /Consensus5–18/);
+  assert.deepEqual(await page.locator('#primerBindingResults .primer-map-row').allTextContents(), [
+    'Forward →3–22', 'Reverse ←1–19', 'Primer F →1–4', 'Primer R ←19–22', 'Consensus5–18',
+  ]);
   assert.equal(await page.locator('#primerBindingResults .map-excluded').count(), 2);
   assert.equal(await page.locator('#primerBindingResults .map-selected').evaluate(el => getComputedStyle(el).borderLeftColor), 'rgb(189, 48, 56)');
   assert.equal(await page.locator('#primerBindingResults .primer-map-axis').textContent(), '22 bp');
@@ -547,6 +560,17 @@ test('full merge shows read spans and overlap without changing the base alignmen
   assert.equal(await page.locator('#fullReadCoverage .map-selected').count(), 1);
   assert.equal(await page.locator('#fullReadCoverage .map-excluded').count(), 0);
   assert.ok(await page.locator('#fullReadCoverage .map-site.map-mixed').count() > 0);
+  const contrast = await page.locator('#fullReadCoverage .map-site.map-mixed').first().evaluate(el => {
+    const luminance = color => {
+      const channels = color.match(/\d+/g).slice(0, 3).map(value => Number(value) / 255)
+        .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+      return channels.reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+    };
+    const marker = luminance(getComputedStyle(el).backgroundColor);
+    const bar = luminance(getComputedStyle(el.parentElement.querySelector('.primer-map-segment')).backgroundColor);
+    return (Math.max(marker, bar) + 0.05) / (Math.min(marker, bar) + 0.05);
+  });
+  assert.ok(contrast >= 3, `Mixed-base marker contrast was ${contrast}`);
   assert.equal(await page.locator('#fullReadCoverage .primer-map-axis').evaluate(el => getComputedStyle(el, '::before').borderTopStyle), 'solid');
   await page.locator('#fullReadCoverage').scrollIntoViewIfNeeded();
   await page.screenshot({ path: '/tmp/sanger-full-merge-coverage.png' });
