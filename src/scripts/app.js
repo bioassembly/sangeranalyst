@@ -441,6 +441,10 @@ function selectResultTab(id, focus = false) {
     tab.tabIndex = selected ? 0 : -1;
     document.getElementById(tab.getAttribute('aria-controls')).hidden = !selected;
   }
+  if (runState.result) {
+    document.getElementById('sharedPeaks').innerHTML = renderSecondaryPeaksHtml(runState.result.outputs[OUTPUT_KEYS[id]]);
+    document.getElementById('peakCoordinateContext').textContent = `Consensus positions refer to the ${chosen.textContent.toLowerCase()} sequence.`;
+  }
   if (focus) chosen.focus();
 }
 
@@ -626,7 +630,6 @@ function renderResults(result) {
     // alignment. Show the full assembly alignment with an explicit coordinate note.
     renderOutput(id, result.outputs[key], id === 'primerTrim' ? result.outputs.consensus_full : result.outputs[key]);
   }
-  document.getElementById('sharedPeaks').innerHTML = renderSecondaryPeaksHtml(result.outputs.consensus_full);
   document.getElementById('peakThreshold').textContent = `Secondary peak threshold: ${result.request.settings.secondary_peak_threshold}% of the primary peak height.`;
   document.getElementById('primerTrimTab').hidden = !result.outputs.primer_trim;
   selectResultTab('strict');

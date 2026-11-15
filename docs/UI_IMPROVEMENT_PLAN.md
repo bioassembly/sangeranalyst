@@ -6,7 +6,7 @@
 - Distinct highlighting for mismatches, IUPAC mixed bases, uncalled N bases and gaps; a full expandable IUPAC code key.
 - Conflict navigation from each output's sequence and alignment into the input chromatograms, with highlighted read bases and a return-to-result control.
 - Primer-trimmed conflict coordinates mapped only when the trimmed sequence occurs uniquely in the full merge.
-- One shared secondary-peak section using full-merge consensus coordinates, including peaks excluded by trimming.
+- One shared secondary-peak section using the selected output’s consensus coordinates and excluding peaks outside that output.
 - NCBI BLAST button beside Download .fasta. It copies the chosen FASTA and opens NCBI for pasting.
 - Removed middle-dot separators from the interface.
 

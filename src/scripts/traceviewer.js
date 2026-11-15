@@ -239,7 +239,6 @@ export function detectTraceSecondaryPeaks(rawRead, thresholdPct = 33, complement
     const primarySignal = primaryTrace[centerLoc];
     if (primarySignal < 1) continue;
 
-    let topPeak = null;
     for (const base of ['G', 'A', 'T', 'C']) {
       if (base === primaryBase) continue;
       const trace = channels[base];
@@ -247,18 +246,17 @@ export function detectTraceSecondaryPeaks(rawRead, thresholdPct = 33, complement
       const peakVal = findLocalMaxInWindow(trace, centerLoc, searchWindow);
       if (peakVal !== null) {
         const ratio = (peakVal / primarySignal) * 100.0;
-        if (ratio >= pct && (!topPeak || ratio > topPeak.percentage)) {
-          topPeak = {
+        if (ratio >= pct) {
+          results.push({
             rawIndex: i,
             position: i + 1,
             primaryBase: complementBases ? (COMPLEMENT[primaryBase] || primaryBase) : primaryBase,
             secondaryBase: complementBases ? (COMPLEMENT[base] || base) : base,
             percentage: Math.round(ratio * 100) / 100,
-          };
+          });
         }
       }
     }
-    if (topPeak) results.push(topPeak);
   }
   return results;
 }
@@ -807,12 +805,21 @@ export function attachTraceViewer({
   }
 
   function recomputeAnnotations() {
+    const strongestAtEachBase = (peaks, index) => {
+      const map = new Map();
+      for (const peak of peaks) {
+        const key = index(peak);
+        if (!map.has(key) || peak.percentage > map.get(key).percentage) map.set(key, peak);
+      }
+      return map;
+    };
     if (reads.F && rawReads.F) {
       reads.F.trimWindow = rawReads.F.qual
         ? computeMottTrimWindow(rawReads.F.qual, mottCutoff)
         : [0, reads.F.bases.length];
       const spF = detectTraceSecondaryPeaks(rawReads.F, secPeakThreshold, false, 3, reads.F.trimWindow);
-      reads.F.secPeakByIdx = new Map(spF.map(p => [p.rawIndex, p]));
+      reads.F.secondaryPeaks = spF;
+      reads.F.secPeakByIdx = strongestAtEachBase(spF, p => p.rawIndex);
     }
     if (reads.R && rawReads.R) {
       const L = rawReads.R.bases.length;
@@ -824,14 +831,13 @@ export function attachTraceViewer({
         reads.R.trimWindow = [0, L];
       }
       const spR = detectTraceSecondaryPeaks(rawReads.R, secPeakThreshold, revComplemented, 3, rawWindow);
-      reads.R.secPeakByIdx = new Map(
-        spR.map(p => [revComplemented ? (L - 1 - p.rawIndex) : p.rawIndex, p])
-      );
+      reads.R.secondaryPeaks = spR;
+      reads.R.secPeakByIdx = strongestAtEachBase(spR, p => revComplemented ? L - 1 - p.rawIndex : p.rawIndex);
     }
     const peaks = [];
     for (const [key, direction] of [['F', 'Forward'], ['R', 'Reverse']]) {
-      const items = [...(reads[key]?.secPeakByIdx || [])].sort(([a], [b]) => a - b);
-      for (const [, peak] of items) peaks.push({ ...peak, direction, key: `${key}:${peak.rawIndex}` });
+      const items = [...(reads[key]?.secondaryPeaks || [])].sort((a, b) => key === 'R' && revComplemented ? b.rawIndex - a.rawIndex : a.rawIndex - b.rawIndex);
+      for (const peak of items) peaks.push({ ...peak, direction, key: `${key}:${peak.rawIndex}:${peak.secondaryBase}` });
     }
     onPeaksChanged?.(peaks);
   }
@@ -1020,7 +1026,7 @@ export function attachTraceViewer({
         const x = (e.clientX - rect.left) * canvas.clientWidth / rect.width;
         const y = (e.clientY - rect.top) * canvas.clientHeight / rect.height;
         const peak = renderers[key].peakAt(x, y, { ...view, col: view.col + focusOffsets[key] });
-        if (peak) onPeakSelected?.(`${key}:${peak.rawIndex}`);
+        if (peak) onPeakSelected?.(`${key}:${peak.rawIndex}:${peak.secondaryBase}`);
       }
       if (tapStart?.id === e.pointerId) tapStart = null;
       pointers.delete(e.pointerId);

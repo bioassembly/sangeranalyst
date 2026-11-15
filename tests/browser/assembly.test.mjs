@@ -571,7 +571,7 @@ const secondaryReport = `
 #=======================================
 `;
 
-test('shared double peaks retain full-merge coordinates when output tabs change', () => withPage(async page => {
+test('secondary-peak table follows each output consensus coordinate system', () => withPage(async page => {
   await assemble(page, {
     outputs: {
       consensus_strict: report + secondaryReport,
@@ -583,12 +583,12 @@ test('shared double peaks retain full-merge coordinates when output tabs change'
   assert.match(await page.locator('#sharedPeaks').textContent(), /41%/);
   assert.equal(await page.locator('[role="tabpanel"] .peak-section').count(), 0);
   assert.equal(await page.locator('.shared-peaks').count(), 1);
-  assert.equal(await page.locator('#sharedPeaks tbody tr').first().locator('td').nth(1).textContent(), '29');
+  assert.equal(await page.locator('#sharedPeaks tbody tr').first().locator('td').nth(1).textContent(), '9');
   assert.match(await page.locator('#peakThreshold').textContent(), /33%/);
   await page.getByRole('tab', { name: 'Full merge', exact: true }).click();
   assert.equal(await page.locator('#sharedPeaks tbody tr').first().locator('td').nth(1).textContent(), '29');
   await page.getByRole('tab', { name: 'Primer trimmed', exact: true }).click();
-  assert.equal(await page.locator('#sharedPeaks tbody tr').first().locator('td').nth(1).textContent(), '29');
+  assert.equal(await page.locator('#sharedPeaks tbody tr').first().locator('td').nth(1).textContent(), '5');
   assert.equal(await page.locator('#sharedPeaks tbody tr').first().locator('td').first().textContent(), '31');
   assert.equal(await page.getByRole('tabpanel').count(), 1);
   const raw = await download(page, page.locator('.download-btn[data-target="primerTrim"]'));
@@ -605,13 +605,13 @@ test('shared double peaks retain full-merge coordinates when output tabs change'
 
 test('empty and missing secondary-peak reports are explained separately', () => withPage(async page => {
   await assemble(page, {
-    outputs: { consensus_strict: report, consensus_full: fullReport + '# No significant secondary peak in "Forward Chromatogram"\n# No significant secondary peak in "Reverse Chromatogram"' },
+    outputs: { consensus_strict: report + '# No significant secondary peak in "Forward Chromatogram"\n# No significant secondary peak in "Reverse Chromatogram"', consensus_full: fullReport },
     warnings: [],
   });
   assert.match(await page.locator('#sharedPeaks').textContent(), /Forward: no significant/);
   assert.match(await page.locator('#sharedPeaks').textContent(), /Reverse: no significant/);
   await page.getByRole('tab', { name: 'Full merge', exact: true }).click();
-  assert.match(await page.locator('#sharedPeaks').textContent(), /Forward: no significant/);
+  assert.match(await page.locator('#sharedPeaks').textContent(), /were not included/);
   await assemble(page);
   assert.match(await page.locator('#sharedPeaks').textContent(), /were not included/);
 }));
@@ -623,6 +623,7 @@ test('IUPAC information opens beside the input settings and result highlights ha
   assert.equal(await page.locator('#peakHeading').textContent(), 'Secondary-peak detection');
   const button = page.getByRole('button', { name: 'IUPAC base codes', exact: true });
   await button.click();
+  assert.equal(await button.textContent(), await page.locator('#secPeakInfoBtn').textContent());
   assert.equal(await button.getAttribute('aria-expanded'), 'true');
   assert.equal(await page.locator('#iupac_tooltip').isVisible(), true);
   assert.match(await page.locator('#iupac_tooltip').textContent(), /A \/ G/);
@@ -633,6 +634,8 @@ test('IUPAC information opens beside the input settings and result highlights ha
   assert.ok(decorations.every(value => value === 'none'));
   await page.locator('#results').screenshot({ path: '/tmp/sanger-column-highlights.png', style: 'astro-dev-toolbar { display: none; }' });
   await page.setViewportSize({ width: 390, height: 844 });
+  await button.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
   await button.click();
   const popup = await page.locator('#iupac_tooltip').boundingBox();
   assert.ok(popup.x >= 0 && popup.x + popup.width <= 390);

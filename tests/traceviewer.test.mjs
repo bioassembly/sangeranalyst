@@ -307,3 +307,10 @@ test('outlier notice is determined on load and is not refreshed during panning',
   viewer.clear();
   assert.equal(note.hidden, true);
 });
+
+test('client screening retains every qualifying secondary channel, as the server does', () => {
+  const channels = { A: new Array(20).fill(0), C: new Array(20).fill(0), G: new Array(20).fill(0), T: new Array(20).fill(0) };
+  channels.A[10] = 100; channels.C[10] = 40; channels.G[10] = 70;
+  const peaks = detectTraceSecondaryPeaks({ bases: 'A', ploc: [10], channels }, 33);
+  assert.deepEqual(peaks.map(p => [p.secondaryBase, p.percentage]), [['G', 70], ['C', 40]]);
+});

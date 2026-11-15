@@ -102,7 +102,7 @@ const baseCodes = [
           </div>
           <div class="small">
             Secondary peaks reaching this percentage of the primary peak’s height are marked (<span style="color:#d97706">◆</span>). Mixed bases supported by secondary peaks are represented with IUPAC ambiguity codes.
-            <button class="info-btn" id="iupacInfoBtn" type="button" aria-label="IUPAC base codes" aria-expanded="false" aria-controls="iupac_tooltip">ⓘ</button>
+            <button class="info-btn" id="iupacInfoBtn" type="button" aria-label="IUPAC base codes" aria-expanded="false" aria-controls="iupac_tooltip">ℹ️</button>
           </div>
         </div>
 
@@ -350,10 +350,10 @@ const baseCodes = [
         </div>
         <section class="peak-section shared-peaks" aria-labelledby="peakHeading">
           <h4 id="peakHeading" class="result-title">Secondary-peak detection</h4>
-          <p class="small">Shared across outputs. Consensus positions refer to the full merge, before primer trimming.</p>
+          <p class="small"><span id="peakCoordinateContext"></span></p>
           <p id="peakThreshold" class="small"></p>
           <div id="sharedPeaks"></div>
-          <p class="small peak-coordinate-note">Trace positions follow the read orientation stated in the report. Peaks outside a trimmed output remain visible here.</p>
+          <p class="small peak-coordinate-note">Trace positions follow the read orientation stated in the report. Peaks outside the selected sequence are excluded.</p>
         </section>
       </div>
     </div>
@@ -436,9 +436,9 @@ const baseCodes = [
     </div>
   </footer>
 
-  <div id="iupac_tooltip" class="tooltip base-code-key" style="display:none; width:280px" role="tooltip" aria-hidden="true">
-    <strong>IUPAC ambiguity codes</strong>
-    <p>Each code represents the possible bases at one sequence position.</p>
+  <div id="iupac_tooltip" class="tooltip iupac-key" style="display:none; width:280px" role="tooltip" aria-hidden="true">
+    <div class="iupac-title">IUPAC base codes</div>
+    <p>One letter represents the possible bases at a mixed or uncertain position.</p>
     <dl>{baseCodes.map(([code, bases]) => <div><dt>{code}</dt><dd>{bases}</dd></div>)}</dl>
   </div>
 
