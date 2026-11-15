@@ -98,8 +98,10 @@ test('balanced scaling flags tall peaks and fit-all mode reveals their full heig
   await page.locator('#traceAmp').fill('4');
   assert.equal(await page.locator('#traceScaleNote').isVisible(), true);
   assert.match(await page.locator('#traceScaleNote').textContent(), /Fit all peaks/);
+  await page.locator('#traceScrollBar').evaluate(el => { el.scrollLeft = el.scrollWidth; });
+  assert.equal(await page.locator('#traceScaleNote').isVisible(), true);
   await page.getByLabel('Peak scaling').selectOption('all');
-  assert.equal(await page.locator('#traceScaleNote').isVisible(), false);
+  assert.equal(await page.locator('#traceScaleNote').isVisible(), true);
   await page.getByRole('button', { name: 'Reset view' }).click();
   assert.equal(await page.getByLabel('Peak scaling').inputValue(), 'balanced');
   assert.equal(await page.locator('#traceAmp').inputValue(), '1');
@@ -141,13 +143,13 @@ test('a synthetic outlier does not flatten neighboring peaks in balanced mode', 
       }
       return null;
     };
-    const balanced = { normal: peakY(5), clipped: !note.hidden };
+    const balanced = { normal: peakY(5), noticeVisible: !note.hidden };
     select.value = 'all'; select.dispatchEvent(new Event('change'));
-    return { balanced, all: { normal: peakY(5), outlier: peakY(10), clipped: !note.hidden } };
+    return { balanced, all: { normal: peakY(5), outlier: peakY(10), noticeVisible: !note.hidden } };
   });
-  assert.equal(result.balanced.clipped, true);
+  assert.equal(result.balanced.noticeVisible, true);
   assert.ok(result.balanced.normal < 130, `Normal peak should be visible: ${JSON.stringify(result)}`);
-  assert.equal(result.all.clipped, false);
+  assert.equal(result.all.noticeVisible, true);
   assert.ok(result.all.normal > 145, `All-peaks mode should use the outlier height: ${JSON.stringify(result)}`);
   assert.ok(result.all.outlier > 48 && result.all.outlier < 65, `The outlier should fit: ${JSON.stringify(result)}`);
 }));

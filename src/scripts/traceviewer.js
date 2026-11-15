@@ -407,6 +407,7 @@ function createReadRenderer(canvas) {
   let sampleCount = 1;
   let scaleMax = 10;
   let scaleMode = 'balanced';
+  let baseHeights = [];
 
   function setRead(r) {
     read = r;
@@ -415,13 +416,21 @@ function createReadRenderer(canvas) {
       colToSample = () => 0;
       sampleCount = 1;
       scaleMax = 10;
-      return;
+      baseHeights = [];
+      return false;
     }
     colOf = r.colOf || r.ploc.map((_, i) => i);
     colToSample = makeColToSample(r.ploc, colOf);
     const firstChan = r.channels.A || r.channels.C || r.channels.G || r.channels.T || [];
     sampleCount = Math.max(1, firstChan.length);
     scaleMax = computeScaleMax(r.channels);
+    const channels = Object.values(r.channels);
+    baseHeights = r.ploc.map(sample => {
+      let height = 0;
+      for (const values of channels) height = Math.max(height, values?.[sample] || 0);
+      return height;
+    });
+    return calculateTraceScale(baseHeights, scaleMax, scaleMax, 1, 'balanced').clipped;
   }
 
   function setAmplitude(v) { amp = v; }
@@ -569,9 +578,7 @@ function createReadRenderer(canvas) {
     const lastCol = view.col + w * view.colsPerPx;
     for (let i = 0; i < read.bases.length; i++) {
       if (colOf[i] < view.col || colOf[i] > lastCol) continue;
-      const sample = read.ploc[i];
-      let height = 0;
-      for (const values of Object.values(read.channels)) height = Math.max(height, values?.[sample] || 0);
+      const height = baseHeights[i];
       if (height > 0) heights.push(height);
     }
     const { scale: displayScale, clipped } = calculateTraceScale(heights, visibleMax, scaleMax, amp, scaleMode);
@@ -754,9 +761,8 @@ export function attachTraceViewer({
   }
 
   function draw() {
-    const f = renderers.F.draw({ ...view, col: view.col + focusOffsets.F });
-    const r = renderers.R.draw({ ...view, col: view.col + focusOffsets.R });
-    if (scaleNote) scaleNote.hidden = !(f?.clipped || r?.clipped);
+    renderers.F.draw({ ...view, col: view.col + focusOffsets.F });
+    renderers.R.draw({ ...view, col: view.col + focusOffsets.R });
     syncScrollBar();
   }
 
@@ -922,8 +928,9 @@ export function attachTraceViewer({
     }
 
     recomputeAnnotations();
-    renderers.F.setRead(fwd);
-    renderers.R.setRead(rev);
+    const fHasOutliers = renderers.F.setRead(fwd);
+    const rHasOutliers = renderers.R.setRead(rev);
+    if (scaleNote) scaleNote.hidden = !(fHasOutliers || rHasOutliers);
 
     if (metaEl) metaEl.textContent = '';
 

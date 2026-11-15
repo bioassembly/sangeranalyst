@@ -282,3 +282,28 @@ test('secondary-peak detection excludes both Mott-trimmed tails and retains raw 
   assert.deepEqual(detectTraceSecondaryPeaks(read, 33, false, 3, [2, 4]).map(p => p.position), [3, 4]);
   assert.deepEqual(detectTraceSecondaryPeaks(read, 33, true, 3, [2, 4]).map(p => [p.position, p.primaryBase, p.secondaryBase]), [[3, 'T', 'C'], [4, 'T', 'C']]);
 });
+
+test('outlier notice is determined on load and is not refreshed during panning', () => {
+  const listeners = {};
+  const scrollbar = { clientWidth: 600, scrollLeft: 0, firstElementChild: { style: {} }, addEventListener(event, handler) { listeners[event] = handler; } };
+  let hidden = true, writes = 0;
+  const note = { get hidden() { return hidden; }, set hidden(value) { hidden = value; writes++; } };
+  const signal = new Array(210).fill(0);
+  const ploc = Array.from({ length: 20 }, (_, i) => 5 + i * 10);
+  for (const sample of ploc) signal[sample] = 100;
+  signal[ploc[10]] = 10000;
+  const read = { bases: 'A'.repeat(20), ploc, qual: new Array(20).fill(40), channels: { A: signal } };
+  const viewer = attachTraceViewer({ scrollBar: scrollbar, scaleNote: note });
+  viewer.setData(read, null);
+  assert.equal(note.hidden, false);
+  const writesAfterLoad = writes;
+  for (let i = 0; i < 10; i++) { scrollbar.scrollLeft = i * 20; listeners.scroll(); }
+  assert.equal(note.hidden, false);
+  assert.equal(writes, writesAfterLoad);
+  const clean = { ...read, channels: { A: signal.map(value => Math.min(value, 100)) } };
+  viewer.setData(clean, null);
+  assert.equal(note.hidden, true);
+  viewer.setData(read, null);
+  viewer.clear();
+  assert.equal(note.hidden, true);
+});
