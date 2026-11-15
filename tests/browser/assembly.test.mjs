@@ -283,7 +283,7 @@ test('final FASTA and server alignment are immediately visible, with clean expor
   assert.equal(await page.locator('#pageTitle').textContent(), 'SangerAnalyst');
   assert.equal(await page.locator('#strictReport').isVisible(), true);
   assert.equal(await page.locator('#strictReport').textContent(), alignment);
-  assert.equal(await page.locator('#strictReport .aln-mismatch').count(), 8);
+  assert.equal(await page.locator('#strictReport .aln-mismatch').count(), 12);
   assert.match(await page.locator('#strict').textContent(), new RegExp(sequence));
   assert.doesNotMatch(await page.locator('#strict').textContent(), /Identity/);
   assert.match(await page.locator('#strictAlignmentStats').textContent(), /Identity80.0%16 \/ 20 alignment columns/);
@@ -614,4 +614,27 @@ test('empty and missing secondary-peak reports are explained separately', () => 
   assert.match(await page.locator('#sharedPeaks').textContent(), /Forward: no significant/);
   await assemble(page);
   assert.match(await page.locator('#sharedPeaks').textContent(), /were not included/);
+}));
+
+
+test('IUPAC information opens beside the input settings and result highlights have no underlines', () => withPage(async page => {
+  await assemble(page);
+  assert.equal(await page.locator('#results .base-code-key').count(), 0);
+  assert.equal(await page.locator('#peakHeading').textContent(), 'Secondary-peak detection');
+  const button = page.getByRole('button', { name: 'IUPAC base codes', exact: true });
+  await button.click();
+  assert.equal(await button.getAttribute('aria-expanded'), 'true');
+  assert.equal(await page.locator('#iupac_tooltip').isVisible(), true);
+  assert.match(await page.locator('#iupac_tooltip').textContent(), /A \/ G/);
+  await button.click();
+  assert.equal(await page.locator('#iupac_tooltip').isVisible(), false);
+  const decorations = await page.locator('#strictReport .aln-mismatch, #strict .amb').evaluateAll(items => items.map(el => getComputedStyle(el).textDecorationLine));
+  assert.ok(decorations.length > 0);
+  assert.ok(decorations.every(value => value === 'none'));
+  await page.locator('#results').screenshot({ path: '/tmp/sanger-column-highlights.png', style: 'astro-dev-toolbar { display: none; }' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await button.click();
+  const popup = await page.locator('#iupac_tooltip').boundingBox();
+  assert.ok(popup.x >= 0 && popup.x + popup.width <= 390);
+  assert.ok(popup.y >= 0 && popup.y + popup.height <= 844);
 }));

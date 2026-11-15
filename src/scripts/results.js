@@ -31,16 +31,29 @@ export function renderAlignmentHtml(text, sites = []) {
   const lines = String(text || '').split('\n');
   const byColumn = new Map(sites.map((site, index) => [site.alignmentPosition, { site, index }]));
   let offset = 0;
+  const columnClass = (base, opposite) => base === '-' || opposite === '-' ? 'aln-gap'
+    : base === 'N' || opposite === 'N' ? 'uncalled' : base !== opposite ? 'aln-mismatch'
+    : /[RYKMSWBDHV]/i.test(base) ? 'amb' : '';
   return lines.map((line, i) => {
     const row = line.match(READ_ROW);
-    if (!row) return escapeHtml(line);
+    if (!row) {
+      const forward = lines[i - 1]?.match(READ_ROW);
+      const reverse = lines[i + 1]?.match(READ_ROW);
+      if (forward?.[1].toLowerCase() !== 'forward' || !reverse || !/^reverse/i.test(reverse[1])) return escapeHtml(line);
+      const start = forward[1].length + forward[2].length;
+      return [...line].map((marker, index) => {
+        const column = index - start;
+        if (column < 0 || column >= forward[3].length) return escapeHtml(marker);
+        const className = columnClass(forward[3][column], reverse[3][column]);
+        const conflict = byColumn.get(offset + column + 1);
+        return className ? `<span class="${className}${conflict ? ' alignment-marker' : ''}"${conflict ? ` data-conflict-index="${conflict.index}"` : ''}>${escapeHtml(marker)}</span>` : escapeHtml(marker);
+      }).join('');
+    }
     const other = lines[i + (row[1].toLowerCase() === 'forward' ? 2 : -2)]?.match(READ_ROW);
     if (!other || row[3].length !== other[3].length) return escapeHtml(line);
     const bases = [...row[3]].map((base, column) => {
       const opposite = other[3][column];
-      const className = base === '-' || opposite === '-' ? 'aln-gap'
-        : base === 'N' ? 'uncalled' : base !== opposite ? 'aln-mismatch'
-        : /[RYKMSWBDHV]/i.test(base) ? 'amb' : '';
+      const className = columnClass(base, opposite);
       const markup = className ? `<span class="${className}">${base}</span>` : base;
       const conflict = byColumn.get(offset + column + 1);
       return conflict ? conflictButton(markup, conflict.site, conflict.index) : markup;

@@ -213,3 +213,12 @@ test('only the statistical overlap warning is simplified for display', () => {
   ]);
   assert.match(warnings[0], /candidate overlap 15 bp/);
 });
+
+test('alignment differences use the same highlight across both reads and the marker row', () => {
+  const text = 'forward 1 AN-C 3\n          |   \nreverse 1 ACGT 4';
+  const html = renderAlignmentHtml(text);
+  assert.equal(html.replace(/<[^>]*>/g, ''), text);
+  for (const className of ['uncalled', 'aln-gap', 'aln-mismatch']) {
+    assert.equal((html.match(new RegExp(`class="${className}"`, 'g')) || []).length, 3);
+  }
+});

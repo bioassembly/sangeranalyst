@@ -121,6 +121,7 @@ const tooltipPairs = [
   [document.getElementById('mottInfoBtn'), document.getElementById('m_tooltip')],
   [document.getElementById('qPhredInfoBtn'), document.getElementById('q_tooltip')],
   [document.getElementById('secPeakInfoBtn'), document.getElementById('sec_tooltip')],
+  [document.getElementById('iupacInfoBtn'), document.getElementById('iupac_tooltip')],
 ];
 
 function hideTooltips() {
@@ -142,8 +143,10 @@ function toggleTooltip(btn, tip) {
     const tooltipWidth = tip.offsetWidth || tip.clientWidth || 220;
     const rawLeft = rect.left + rect.width / 2 - tooltipWidth / 2;
     const clampedLeft = Math.max(8, Math.min(rawLeft, window.innerWidth - tooltipWidth - 8));
+    const top = rect.bottom + 8 + tip.offsetHeight > window.innerHeight - 8
+      ? Math.max(8, rect.top - tip.offsetHeight - 8) : rect.bottom + 8;
     tip.style.left = `${clampedLeft + window.scrollX}px`;
-    tip.style.top = `${rect.bottom + 8 + window.scrollY}px`;
+    tip.style.top = `${top + window.scrollY}px`;
   }
 }
 
@@ -551,8 +554,8 @@ function renderConflictControls(id) {
       <button type="button" class="result-btn" data-conflict-action="next" aria-label="Next conflict">Next →</button>
       <button type="button" class="result-btn" data-conflict-action="inspect">View chromatograms ↑</button>
     </div>
-  </div><p class="conflict-hint">Select an underlined base to inspect its traces. Single-read ends are excluded from conflict review.</p>`;
-  for (const el of resultsBox.querySelectorAll(`[data-output-panel="${id}"] .conflict-base`)) {
+  </div><p class="conflict-hint">Select a highlighted base to inspect its traces. Single-read ends are excluded from conflict review.</p>`;
+  for (const el of resultsBox.querySelectorAll(`[data-output-panel="${id}"] .conflict-base, [data-output-panel="${id}"] .alignment-marker`)) {
     el.classList.toggle('is-selected', Number(el.dataset.conflictIndex) === view.selected);
   }
 }

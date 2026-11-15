@@ -101,7 +101,8 @@ const baseCodes = [
             <button class="info-btn" id="secPeakInfoBtn" type="button" aria-label="Secondary peak info" aria-expanded="false" aria-controls="sec_tooltip">ℹ️</button>
           </div>
           <div class="small">
-            Secondary peaks reaching this percentage of the primary peak’s height are marked (<span style="color:#d97706">◆</span>). Corroborated mixed bases use IUPAC codes: R (A/G), Y (C/T), S (G/C), W (A/T), K (G/T) and M (A/C).
+            Secondary peaks reaching this percentage of the primary peak’s height are marked (<span style="color:#d97706">◆</span>). Mixed bases supported by secondary peaks are represented with IUPAC ambiguity codes.
+            <button class="info-btn" id="iupacInfoBtn" type="button" aria-label="IUPAC base codes" aria-expanded="false" aria-controls="iupac_tooltip">ⓘ</button>
           </div>
         </div>
 
@@ -188,7 +189,7 @@ const baseCodes = [
 
       <div class="result-section" id="results" style="display:none">
         <h3 class="results-heading">Analysis results</h3>
-        <p class="result-tabs-hint">Choose an output to view its sequence and alignment. Double-peak detection is shared below.</p>
+        <p class="result-tabs-hint">Choose an output to view its sequence and alignment. Secondary-peak detection is shared below.</p>
         <p id="staleResultNotice" role="status" hidden>Inputs changed. Run Analyze again to update these results before exporting or inspecting traces.</p>
         <div id="server-warn" class="server-warn" role="alert" hidden></div>
         <p id="primerOutcome" class="small" style="white-space:pre-line" hidden></p>
@@ -227,10 +228,6 @@ const baseCodes = [
           <pre id="strict" class="sequence-output" aria-label="High-confidence consensus FASTA" tabindex="0"></pre>
           <div class="sequence-footer">
             <span class="small">Sequence direction: 5′ → 3′</span>
-            <details class="base-code-key">
-              <summary>IUPAC base codes</summary>
-              <dl>{baseCodes.map(([code, bases]) => <div><dt>{code}</dt><dd>{bases}</dd></div>)}</dl>
-            </details>
           </div>
           <p class="small blast-help" id="strictBlastStatus" role="status">BLAST copies the FASTA and opens NCBI. Paste it into the query field.</p>
           <div class="alignment-block">
@@ -283,10 +280,6 @@ const baseCodes = [
           <pre id="full" class="sequence-output" aria-label="Full merged consensus FASTA" tabindex="0"></pre>
           <div class="sequence-footer">
             <span class="small">Sequence direction: 5′ → 3′</span>
-            <details class="base-code-key">
-              <summary>IUPAC base codes</summary>
-              <dl>{baseCodes.map(([code, bases]) => <div><dt>{code}</dt><dd>{bases}</dd></div>)}</dl>
-            </details>
           </div>
           <p class="small blast-help" id="fullBlastStatus" role="status">BLAST copies the FASTA and opens NCBI. Paste it into the query field.</p>
           <div class="alignment-block">
@@ -337,10 +330,6 @@ const baseCodes = [
           <pre id="primerTrim" class="sequence-output" aria-label="Primer-trimmed consensus FASTA" tabindex="0"></pre>
           <div class="sequence-footer">
             <span class="small">Sequence direction: 5′ → 3′</span>
-            <details class="base-code-key">
-              <summary>IUPAC base codes</summary>
-              <dl>{baseCodes.map(([code, bases]) => <div><dt>{code}</dt><dd>{bases}</dd></div>)}</dl>
-            </details>
           </div>
           <p class="small blast-help" id="primerTrimBlastStatus" role="status">BLAST copies the FASTA and opens NCBI. Paste it into the query field.</p>
           <div class="alignment-block">
@@ -360,7 +349,7 @@ const baseCodes = [
           </div>
         </div>
         <section class="peak-section shared-peaks" aria-labelledby="peakHeading">
-          <h4 id="peakHeading" class="result-title">Double-peak detection</h4>
+          <h4 id="peakHeading" class="result-title">Secondary-peak detection</h4>
           <p class="small">Shared across outputs. Consensus positions refer to the full merge, before primer trimming.</p>
           <p id="peakThreshold" class="small"></p>
           <div id="sharedPeaks"></div>
@@ -446,6 +435,12 @@ const baseCodes = [
       <a class="linkish" id="supportLink">☕ Be Supporter!</a>
     </div>
   </footer>
+
+  <div id="iupac_tooltip" class="tooltip base-code-key" style="display:none; width:280px" role="tooltip" aria-hidden="true">
+    <strong>IUPAC ambiguity codes</strong>
+    <p>Each code represents the possible bases at one sequence position.</p>
+    <dl>{baseCodes.map(([code, bases]) => <div><dt>{code}</dt><dd>{bases}</dd></div>)}</dl>
+  </div>
 
   <!-- Tooltip (hidden by default) -->
   <div id="m_tooltip" class="tooltip" style="display:none" role="tooltip" aria-hidden="true">

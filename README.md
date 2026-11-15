@@ -91,7 +91,7 @@ This provides the longest methodologically reliable sequence, though meaning it'
 
 Run `npm ci`, `npm test`, and `npm run build`. Browser checks use `npm run test:browser` after installing Chromium with `node node_modules/playwright-core/cli.js install chromium`.
 
-Results use a panel tabset: High confidence, Full merge, and Primer trimmed when supplied. Each tab keeps its FASTA, final read alignment and exports together. A shared double-peak table below the tabs uses full-merge coordinates. Underlined conflicts open the corresponding chromatogram bases, with a return control. Primer-trimmed output displays the full assembly alignment with an explicit coordinate note. Full reports remain available as text downloads. Editing reads, primers, or settings marks the completed analysis stale and disables exports until rerun. Downloads use the filenames and settings captured for that analysis.
+Results use a panel tabset: High confidence, Full merge, and Primer trimmed when supplied. Each tab keeps its FASTA, final read alignment and exports together. A shared secondary-peak table below the tabs uses full-merge coordinates. Highlighted conflicts open the corresponding chromatogram bases, with a return control. Primer-trimmed output displays the full assembly alignment with an explicit coordinate note. Full reports remain available as text downloads. Editing reads, primers, or settings marks the completed analysis stale and disables exports until rerun. Downloads use the filenames and settings captured for that analysis.
 
 The NCBI BLASTn button copies the chosen FASTA and opens NCBI for pasting. Further interface proposals are recorded in [the improvement plan](docs/UI_IMPROVEMENT_PLAN.md).
 
