@@ -1,116 +1,146 @@
-<h1 align="center"><img src="public/assets/favicon.ico" width="32" height="32" /> SangerAnalyst — A Free, Web-Based Sanger Sequencing Analysis Tool</h1>
+# SangerAnalyst
 
-<p align="center">
-  <img src="https://img.shields.io/badge/100%25-Free-FFD60A?style=for-the-badge" />
-</p>
+A free web app for assembling paired Sanger chromatograms into consensus sequences, with quality trimming, primer trimming, and interactive trace review.
 
----
+**[Open SangerAnalyst](https://bioassembly.github.io/sangeranalyst/)** | **[Analysis API repository](https://github.com/bioassembly/sangeranalyst-api)**
 
-SangerAnalyst provides a lightning-fast and straightforward way to process Sanger chromatograms within seconds—no installation required and 100% free.
+Upload forward and reverse `.ab1` files, optionally add primers, and select **Analyze**. Each result combines its final FASTA, read-coverage map, read alignment, and exports in one tab.
 
-The application performs automated quality trimming, forward–reverse read alignment, consensus generation guided by per-base Phred scores, and anchor-based primer trimming. It also produces a clear conflict report, making mismatches, gaps, and low-confidence positions immediately visible.
+## Features
 
-This streamlined workflow enables users to obtain an accurate consensus sequence while saving significant time and avoiding the usual manual analysis headaches.
+- **Chromatogram viewer:** reads load immediately, including the bundled demo. Zoom, pan, inspect quality scores, and review Mott-trimmed regions. Balanced peak scaling keeps typical peaks readable; **Fit all peaks** shows the full signal height.
+- **Quality-aware assembly:** Mott trimming, automatic read orientation, statistically validated overlap, and Phred-guided conflict resolution.
+- **Result maps:** forward and reverse coverage share a full-merge coordinate axis. Red boundaries mark the region used for each consensus; excluded regions are shaded. Colours distinguish mismatches, mixed bases, and uncalled bases (`NNNN`); white gaps appear only on the affected read.
+- **Primer review:** binding sites appear beside their corresponding template reads, with gapped primer alignments and a read alignment cropped to the sequence retained after primer trimming.
+- **Trace navigation:** select a highlighted conflict or secondary-peak result to inspect its original chromatogram bases, then return to the result.
+- **Exports:** copy or download clean FASTA and complete text reports. **NCBI BLASTn** opens the search page and copies the chosen FASTA for pasting.
+- **Input handling:** drag-and-drop read pairing, Forward/Reverse swap, and uploaded or pasted primers. Processing settings are remembered in your browser.
 
-👉 **Support new features on the web:**  
-https://bioassembly.github.io/sangeranalyst
+## Analyze a sample
 
----
+1. Open the app and upload the forward and reverse `.ab1` files, or select **Try demo data**.
+2. Optionally supply one or both primers as raw DNA or a single FASTA record. Use IUPAC DNA codes and at least 10 bases. The interface limits each input file to 5 MB.
+3. Review the chromatograms and adjust the settings if needed.
+4. Select **Analyze**. Uploaded data is deleted immediately after processing.
+5. Review the result tabs, warnings, and highlighted bases before exporting a sequence.
 
-## ✨ Features
+| Setting | Default | Effect |
+| --- | --- | --- |
+| Mott trim cutoff | `0.1` | Sets the error-probability cutoff used to select the retained read window. |
+| Minimum base Phred quality | `20` | Controls which base calls can support consensus decisions; positions without sufficient support become `N`. |
+| Secondary-peak threshold | `33%` | Minimum secondary-signal height relative to the primary signal for a candidate peak. |
 
-- **Input chromatograms** — forward/reverse traces appear immediately on file selection or **Try demo data**, with zoom, pan, quality shading and secondary-peak markers. Typical-peak scaling keeps neighboring peaks readable; **Fit all peaks** reveals full heights. Select a marker or choose a peak to inspect its bases and original-signal ratio. Traces work without the analysis API. Secondary-peak markers appear after Analyze and refilter locally when trimming or threshold settings change.
-- **Final read alignment** — the server's read alignment is visible immediately below each consensus, with mismatch/gap highlighting and preserved coordinates.
-- **Quality-weighted consensus** — Mott trimming, automatic orientation detection, statistically validated overlap, PolyPhred-style heterozygote calling (IUPAC codes), and conflict/secondary-peak reports embedded in each output.
-- **Smart upload & primer handling** — drag & drop `.ab1` auto-pairing (`_F`/`_R`, `27F`/`1492R`, etc.), 1-click `⇄` F/R swap, plus FASTA (`.fasta`/`.fa`/`.fna`/`.txt`) or pasted primer sequences (IUPAC accepted, min 10 bases).
-- **Clean FASTA & Full Report exports** — High-Confidence Consensus, Full Merge, and conditional Primer-Trimmed Consensus each provide **Copy FASTA** / **Download `.fasta`** (strict FASTA for BLAST/SnapGene/Biopython) alongside **Copy Report** / **Download Report (`.txt`)**; IUPAC ambiguity bases are highlighted strictly on sequence lines.
-- **Demo dataset** — **Try demo data** button loads the bundled control files instantly.
-- **Remembered settings** — Mott cutoff, min Phred, and secondary-peak threshold persist in your browser (localStorage).
-- **Mobile-friendly** — responsive layout, FAQ accordion, tooltips, and inline validation (5 MB per `.ab1`, ABIF signature check).
+### Choose the appropriate output
 
----
+| Result tab | Sequence included | What to review |
+| --- | --- | --- |
+| **High confidence** | The statistically validated overlap between the reads. | Conflicts, gaps, and quality within the shared region. If the overlap fails validation, no high-confidence consensus is produced. |
+| **Full merge** | The entire aligned read span, including single-read ends. | Bases outside the overlap have support from only one read. |
+| **Primer trimmed** | The full merge after primer-boundary trimming; shown when primers are supplied. | Binding alignments and any fallback warnings. Primer trimming does not make single-read regions high confidence. |
 
-## 📂 Demo Dataset
+The primer-trimmed read alignment shows only the retained columns and preserves the quality-trimmed, oriented read positions. Its binding map and primer-alignment coordinates refer to **Full merge**. Reverse-primer alignments use the reverse complement of the supplied primer.
 
-A publicly available control dataset is provided for users to test the tool without uploading their own files.
+### Secondary peaks and mixed bases
 
-### **Source**
-CRISPR-Cas9 edited cane toad *tyrosinase* gene — control samples (public domain data)  
-DOI: https://doi.org/10.1101/2025.05.15.654396
+Secondary-peak screening runs on the **server**, once per original read during analysis. The browser receives a candidate cache and filters it when the Mott cutoff or peak threshold changes. It does not run a second peak-detection engine. Markers therefore appear after analysis and exclude Mott-trimmed regions.
 
-### **Included demo files**
-- `fwd_control.ab1`  
-- `rev_control.ab1`  
-- `primer_fwd.fasta`  
-- `primer_rev.fasta`  
+The secondary-peak table is shared across the result tabs. Its consensus positions follow the selected output; original `.ab1` positions identify the same trace bases throughout.
 
-These files are available in the **`public/demo/`** directory of this repository (also loadable directly in the app via the **Try demo data** button).
+A secondary peak alone does not change the consensus to an IUPAC ambiguity code. Both read calls must meet the quality threshold and disagree, with a secondary peak supporting that base pair on at least one read. Otherwise, the quality-based consensus rules apply. The demo can contain a secondary peak without producing an IUPAC mixed-base call.
 
----
+Changing reads, primers, or processing settings marks the previous analysis as stale and disables exports until **Analyze** runs again. Cached trace markers can still be filtered while reviewing changed settings.
 
-## 🚀 Usage Guide
+## Run locally
 
-### **1. Open the Webpage**  
-Visit **https://bioassembly.github.io/sangeranalyst**
+The frontend and API are separate repositories. **Both servers are needed for local analysis.** Chromatogram viewing works before the API is started.
 
-### **2. Upload Input Files**
-Prepare the following files:  
-- Forward read chromatogram (`.ab1`)  
-- Reverse read chromatogram (`.ab1`)  
-- Primers (optional; can be uploaded or typed)
+Use Node.js 22, as in frontend CI, and Python 3.12 for the API's validated CI environment.
 
-### **3. Adjust Processing Settings (Optional)**  
-Defaults work well for most datasets (Mott `0.1`, min Phred `20`, secondary peak `33%`).  
-- **Mott Trim Cutoff** — Controls how aggressively low-quality regions are removed before alignment.  
-- **Minimum Base Phred Quality** — Bases below this threshold are replaced with **`N`**.
-- **Secondary peak threshold (%)** — Controls the sensitivity for detecting mixed bases (heterozygotes).
+```bash
+git clone https://github.com/bioassembly/sangeranalyst.git
+git clone https://github.com/bioassembly/sangeranalyst-api.git
+```
 
-  <img src="public/assets/secondary_peak-min.png" width="96" height="96"/>
-### **4. Run `Analyze`**  
-The backend processes each request in ~0.4 seconds, uploaded data is deleted immediately after processing.
+Start the API in one terminal:
 
-### **5. Inspect Results**
-Review each final FASTA and its read alignment directly in the results. Copy or download the sequence or the complete text report. Input chromatograms are available before analysis; final sequence outputs come from the analysis API. Analysis JSON downloads and successful primer-coordinate messages are omitted; fallback warnings remain visible.
+```bash
+cd sangeranalyst-api
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+python app.py
+```
 
-You will receive 2 outputs (3 if primer included):
+Start the frontend in another terminal:
 
-#### 🔹 High-Confidence Consensus  
-Derived from the overlapping region of forward–reverse alignment (statistically validated). Conflicts and gaps are reported: sequencing errors are corrected from the higher-quality strand, and heterozygous positions confirmed by secondary peaks are kept as IUPAC ambiguity codes.
+```bash
+cd sangeranalyst
+npm ci
+npm run dev
+```
 
-#### 🔹 Full Merge  
-A full-span merge of both chromatogram alignments. This is where longer amplicons shine: on a ~1,500 bp template, ~900 bp forward and reverse reads share only ~300 bp of overlap — the Full Merge reconstructs the entire 1,500 bp span, while bases outside the overlap originate from a single read (keep that caveat in mind for conclusions). For short amplicons it is mainly useful for mapping and reference visualization.
+Open **http://localhost:4321/sangeranalyst/**. Pages served from `localhost` or `127.0.0.1` automatically use `http://127.0.0.1:8000/process`; the hosted site uses the PythonAnywhere API.
 
-#### 🔹 Primer-Trimmed Consensus  
-Primer regions removed from the full merge:  
-`---Primer_F | -----High Confidence Consensus----- | Primer_R---`  
-This provides the longest methodologically reliable sequence, though meaning it's outside High Confidence Consensus region originate from single-read data, which may still have some mismatch or gap compared to the real life biologic DNA sequence.
+If **Analyze** reports that the server cannot be reached, check **http://127.0.0.1:8000/health** and confirm the API terminal is running. A working frontend alone does not confirm API connectivity. The default API CORS allowlist includes the frontend's development port `4321`.
 
----
+## Development checks
 
-## Development and analysis exports
+Run these from the frontend repository:
 
-Run `npm ci`, `npm test`, and `npm run build`. Browser checks use `npm run test:browser` after installing Chromium with `node node_modules/playwright-core/cli.js install chromium`.
+```bash
+npm test
+npm run build
+npx --yes html-validate dist/index.html
+```
 
-Results use a panel tabset: High confidence, Full merge, and Primer trimmed when supplied. Each tab keeps its FASTA, final read alignment and exports together. A shared secondary-peak table below the tabs uses the selected output’s consensus coordinates. Highlighted conflicts open the corresponding chromatogram bases, with a return control. Primer-trimmed output displays the full assembly alignment with an explicit coordinate note. Full reports remain available as text downloads. Editing reads, primers, or settings marks the completed analysis stale and disables exports until rerun. Downloads use the filenames and settings captured for that analysis.
+Browser regression tests use Playwright Core:
 
-The NCBI BLASTn button copies the chosen FASTA and opens NCBI for pasting. Further interface proposals are recorded in [the improvement plan](docs/UI_IMPROVEMENT_PLAN.md).
+```bash
+node node_modules/playwright-core/cli.js install chromium
+npm run test:browser
+```
 
-Primers accept raw DNA or one FASTA record, with IUPAC ambiguity codes, at least 10 bases, and a 5 MB input limit. Invalid encoding, digits, and multiple records are rejected. Ambiguous dropped read pairs require explicit Forward/Reverse slot assignment.
+To use an existing Chrome installation, set `PLAYWRIGHT_CHROME_PATH` to its executable. To include the real local API smoke test, start the API and run:
 
-## 🛠️ Roadmap (To-Do Next)
+```bash
+SANGER_INTEGRATION=1 npm run test:browser
+```
 
-- 🧭 **Reference mapping** — align consensus to a reference and highlight differences.  
-- 📦 **Batch processing** — analyze multiple samples at once.
-- 📈 **Viewer enhancements** — consistent orientation and quality preview across analysis routes.
+The browser suite starts an Astro development server if one is not already running. Without `SANGER_INTEGRATION=1`, analysis responses are mocked for interface checks.
 
----
+### Repository layout
 
-## 📚 Acknowledgement
+| Path | Purpose |
+| --- | --- |
+| `src/pages/index.astro` | Upload form, chromatograms, and result tabs. |
+| `src/scripts/app.js` | Input handling, API requests, and result interactions. |
+| `src/scripts/results.js` | Report parsing, coverage maps, and alignment presentation. |
+| `src/scripts/traceviewer.js` | ABIF parsing and chromatogram viewer. |
+| `src/scripts/sequtils.js` | Sequence, FASTA, primer, and file-pairing helpers. |
+| `src/scripts/runstate.js` | Completed-analysis snapshots and stale-result handling. |
+| `src/styles/global.css` | Interface styles. |
+| `public/demo/` | Bundled read pair and primers. |
+| `tests/` | Unit tests and browser regression checks. |
 
-This project uses **BioPython** for AB1 parsing and core sequence utilities. Its modules provide reliable foundational functions required for Sanger data processing.
+### Deployment
 
----
+Pushes to `main` run the checks and deploy the built `dist/` directory to GitHub Pages. Repository **Settings → Pages → Source** must be **GitHub Actions**.
 
-<p align="center">
-  <sub>Made for easy, fast, and accurate Sanger sequencing analysis.</sub>
-</p>
+The default base path is `/sangeranalyst/`. `SITE_URL` and `BASE_PATH` can override the Astro deployment configuration. Assets must respect the base path. The analysis API is deployed separately; see its [README](https://github.com/bioassembly/sangeranalyst-api#readme) for PythonAnywhere setup.
+
+## Demo data
+
+**Try demo data** loads these files from [`public/demo/`](public/demo/):
+
+- `fwd_control.ab1`
+- `rev_control.ab1`
+- `primer_fwd.fasta`
+- `primer_rev.fasta`
+
+Source: publicly available control reads from *Raw Sanger sequencing data for CRISPR-Cas9 edited cane toad tyrosinase gene*, [DOI: 10.1101/2025.05.15.654396](https://doi.org/10.1101/2025.05.15.654396). Provenance is recorded in [`source.txt`](public/demo/source.txt).
+
+## Further improvements
+
+Proposals and review notes are tracked in the [UI improvement plan](docs/UI_IMPROVEMENT_PLAN.md). Larger potential additions include reference-sequence comparison and batch processing.
+
+SangerAnalyst uses [Biopython](https://biopython.org/) for chromatogram parsing and core sequence analysis, with an Astro frontend and Flask API.
