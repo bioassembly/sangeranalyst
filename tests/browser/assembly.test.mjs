@@ -518,7 +518,9 @@ primer_r_rc     1 TGCA    4
   } });
   await page.getByRole('tab', { name: 'Primer trimmed', exact: true }).click();
   assert.equal(await page.getByRole('heading', { name: 'Primer binding sites' }).isVisible(), true);
-  assert.match(await page.locator('#primerBindingResults .primer-map').textContent(), /Retained5–18/);
+  assert.match(await page.locator('#primerBindingResults .primer-map').textContent(), /Consensus5–18/);
+  assert.equal(await page.locator('#primerBindingResults .map-excluded').count(), 2);
+  assert.equal(await page.locator('#primerBindingResults .map-selected').evaluate(el => getComputedStyle(el).borderLeftColor), 'rgb(189, 48, 56)');
   assert.equal(await page.locator('#primerBindingResults .primer-map-axis').textContent(), '22 bp');
   assert.equal(await page.locator('#primerBindingResults .primer-map-axis').evaluate(el => getComputedStyle(el, '::before').borderTopStyle), 'solid');
   assert.match(await page.getByRole('region', { name: 'Primer binding sites' }).textContent(), /Full merge\s+19 TGCA 22/);
@@ -540,8 +542,11 @@ primer_r_rc     1 TGCA    4
 test('full merge shows read spans and overlap without changing the base alignment', () => withPage(async page => {
   await assemble(page);
   await page.getByRole('tab', { name: 'Full merge', exact: true }).click();
-  assert.match(await page.locator('#fullReadCoverage').textContent(), /Forward →1–20Reverse1–20Overlap1–2020 bp/);
+  assert.match(await page.locator('#fullReadCoverage').textContent(), /Forward →1–20Reverse ←1–20Consensus1–2020 bp/);
   assert.equal(await page.locator('#fullReport').textContent(), alignment);
+  assert.equal(await page.locator('#fullReadCoverage .map-selected').count(), 1);
+  assert.equal(await page.locator('#fullReadCoverage .map-excluded').count(), 0);
+  assert.ok(await page.locator('#fullReadCoverage .map-site.map-mixed').count() > 0);
   assert.equal(await page.locator('#fullReadCoverage .primer-map-axis').evaluate(el => getComputedStyle(el, '::before').borderTopStyle), 'solid');
   await page.locator('#fullReadCoverage').scrollIntoViewIfNeeded();
   await page.screenshot({ path: '/tmp/sanger-full-merge-coverage.png' });
@@ -550,16 +555,24 @@ test('full merge shows read spans and overlap without changing the base alignmen
 test('high-confidence map brackets the retained overlap and clears boundaries for empty consensus', () => withPage(async page => {
   const full = '>full\nTTACGTACG\n\nforward 1 --ACG-ACG 6\n            ||. |||\nreverse_rc 1 TTACATACG 9\n';
   await assemble(page, { ...fixture, outputs: { consensus_full: full, consensus_strict: '>strict\nACGTACG\n' } });
-  assert.match(await page.locator('#strictReadCoverage').textContent(), /high-confidence region: 3–9 \(7 bp\)/);
-  assert.equal(await page.locator('#strictReadCoverage .map-boundaries').count(), 1);
-  assert.equal(await page.locator('.map-boundaries > span').evaluate(el => getComputedStyle(el).borderLeftStyle), 'solid');
+  assert.match(await page.locator('#strictReadCoverage').textContent(), /Consensus3–9/);
+  assert.equal(await page.locator('#strictReadCoverage .map-selected').count(), 1);
+  assert.equal(await page.locator('#strictReadCoverage .map-excluded').count(), 1);
+  const mapRows = page.locator('#strictReadCoverage .primer-map-row');
+  assert.equal(await mapRows.nth(0).locator('.map-site.map-gap').count(), 1);
+  assert.equal(await mapRows.nth(1).locator('.map-site.map-gap').count(), 0);
+  assert.equal(await mapRows.nth(2).locator('.map-site.map-gap').count(), 0);
+  assert.equal(await mapRows.nth(0).locator('.map-site.map-gap').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)');
+  assert.equal(await page.locator('#strictReadCoverage .map-excluded').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(214, 219, 226, 0.3)');
+  assert.doesNotMatch(await page.locator('#strictReadCoverage').textContent(), /Vertical lines mark/);
+  assert.equal(await page.locator('#strictReadCoverage .map-selected').evaluate(el => getComputedStyle(el).borderLeftStyle), 'solid');
   await page.locator('#strictReadCoverage').scrollIntoViewIfNeeded();
   await page.screenshot({ path: '/tmp/sanger-high-confidence-coverage.png' });
   await page.unroute(api);
   await page.route(api, route => route.fulfill({ json: { ...fixture, outputs: { consensus_full: full, consensus_strict: '>strict\n\n' } }, headers: { 'access-control-allow-origin': '*' } }));
   await page.getByRole('button', { name: 'Analyze', exact: true }).click();
   await status(page, 'Analysis complete.');
-  assert.equal(await page.locator('#strictReadCoverage .map-boundaries').count(), 0);
+  assert.equal(await page.locator('#strictReadCoverage .map-selected').count(), 0);
   assert.match(await page.locator('#strictReadCoverage').textContent(), /No high-confidence region was retained/);
 }, { width: 390, height: 844 }));
 

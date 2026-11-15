@@ -125,9 +125,45 @@ export function renderAlignmentStats(alignment) {
   }).join('');
 }
 
+function mapAnnotations(report) {
+  const rows = extractReadAlignment(report).text.split('\n').map(line => line.match(READ_ROW)).filter(Boolean);
+  const forward = rows.filter(row => /^forward$/i.test(row[1])).map(row => row[3]).join('');
+  const reverse = rows.filter(row => /^reverse/i.test(row[1])).map(row => row[3]).join('');
+  const sequence = extractCleanFasta(report).seq;
+  const marks = { forward: [], reverse: [], consensus: [] };
+  if (forward.length !== sequence.length || reverse.length !== sequence.length) return marks;
+  const sharedStart = Math.max(forward.search(/[^-]/), reverse.search(/[^-]/));
+  const sharedEnd = Math.min(forward.replace(/-+$/, '').length, reverse.replace(/-+$/, '').length);
+  for (let i = 0; i < sequence.length; i++) {
+    const mixed = /[RYKMSWBDHV]/.test(sequence[i]);
+    const common = mixed ? 'mixed' : sequence[i] === 'N' || forward[i] === 'N' || reverse[i] === 'N' ? 'uncalled'
+      : i < sharedStart || i >= sharedEnd || forward[i] === '-' || reverse[i] === '-' ? ''
+      : forward[i] !== reverse[i] ? 'mismatch' : '';
+    for (const [read, base] of [['forward', forward[i]], ['reverse', reverse[i]], ['consensus', sequence[i]]]) {
+      const type = base === '-' ? i >= sharedStart && i < sharedEnd ? 'gap' : '' : common;
+      if (!type) continue;
+      const last = marks[read].at(-1);
+      if (last?.type === type && last.end === i) last.end++;
+      else marks[read].push({ start: i, end: i + 1, type });
+    }
+  }
+  return marks;
+}
+
 function renderSequenceMap(rows, length, label, selection = null) {
-  const boundaries = selection ? `<div class="map-boundaries" aria-hidden="true"><span style="left:${100 * selection.start / length}%;width:${100 * (selection.end - selection.start) / length}%"></span></div>` : '';
-  return `<div class="primer-map" role="group" aria-label="${label}"><div class="sequence-map-body">${rows.map(row => `<div class="primer-map-row"><span>${row.label}</span><div class="primer-map-track"><span class="primer-map-segment ${row.className}" style="left:${100 * row.start / length}%;width:${100 * (row.end - row.start) / length}%"></span></div><span>${row.start + 1}–${row.end}</span></div>`).join('')}${boundaries}</div><div class="primer-map-axis"><span>${length} bp</span></div></div>`;
+  const style = (start, end) => `left:${100 * start / length}%;width:${100 * (end - start) / length}%`;
+  const excluded = selection ? [[0, selection.start], [selection.end, length]] : [[0, length]];
+  const shading = excluded.filter(([start, end]) => end > start).map(([start, end]) => `<span class="map-excluded" style="${style(start, end)}"></span>`).join('');
+  const boundaries = `<div class="map-boundaries" aria-hidden="true">${shading}${selection ? `<span class="map-selected" style="${style(selection.start, selection.end)}"></span>` : ''}</div>`;
+  const tracks = rows.map(row => {
+    const marks = (row.marks || []).filter(mark => mark.start < row.end && mark.end > row.start).map(mark => {
+      const start = Math.max(row.start, mark.start), end = Math.min(row.end, mark.end);
+      return `<span class="map-site map-${mark.type}" style="${style(start, end)}" title="${mark.type === 'mixed' ? 'Mixed base' : mark.type === 'uncalled' ? 'Uncalled base' : mark.type === 'gap' ? 'Gap' : 'Mismatch'}: Full merge ${start + 1}${end > start + 1 ? '–' + end : ''}"></span>`;
+    }).join('');
+    return `<div class="primer-map-row"><span>${row.label}</span><div class="primer-map-track">${row.end > row.start ? `<span class="primer-map-segment ${row.className}" style="${style(row.start, row.end)}"></span>${marks}` : ''}</div><span>${row.end > row.start ? `${row.start + 1}–${row.end}` : 'None'}</span></div>`;
+  }).join('');
+  const legend = '<div class="map-key" aria-label="Coverage map legend"><span><i class="map-used"></i>Used for consensus</span><span><i class="map-not-used"></i>Not used</span><span><i class="map-mismatch"></i>Mismatch</span><span><i class="map-mixed"></i>Mixed base</span><span><i class="map-gap"></i>Gap</span><span><i class="map-uncalled"></i>Uncalled</span></div>';
+  return `<div class="primer-map" role="group" aria-label="${label}"><div class="sequence-map-body">${tracks}${boundaries}</div><div class="primer-map-axis"><span>${length} bp</span></div>${legend}</div>`;
 }
 
 export function renderReadCoverageHtml(report, strictReport) {
@@ -137,19 +173,19 @@ export function renderReadCoverageHtml(report, strictReport) {
   const length = extractCleanFasta(report).seq.length;
   if (!length || forward.length !== length || reverse.length !== length) return '';
   const coverage = [];
-  for (const [sequence, label, className] of [[forward, 'Forward →', 'read-forward'], [reverse, 'Reverse', 'read-reverse']]) {
+  const marks = mapAnnotations(report);
+  for (const [sequence, label, className, read] of [[forward, 'Forward →', 'read-forward', 'forward'], [reverse, 'Reverse ←', 'read-reverse', 'reverse']]) {
     const start = sequence.search(/[^-]/);
     if (start < 0) continue;
-    coverage.push({ label, start, end: sequence.replace(/-+$/, '').length, className });
+    coverage.push({ label, start, end: sequence.replace(/-+$/, '').length, className, marks: marks[read] });
   }
   const shared = [...forward].flatMap((base, index) => base !== '-' && reverse[index] !== '-' ? [index] : []);
-  if (shared.length) coverage.push({ label: 'Overlap', start: shared[0], end: shared.at(-1) + 1, className: 'primer-binding' });
   const strict = extractCleanFasta(strictReport).seq;
-  const overlap = coverage.find(row => row.label === 'Overlap');
-  const selected = strictReport !== undefined && strict && overlap && overlap.end - overlap.start === strict.length
+  const overlap = shared.length ? { start: shared[0], end: shared.at(-1) + 1 } : null;
+  const selected = strictReport === undefined ? { start: 0, end: length } : strict && overlap && overlap.end - overlap.start === strict.length
     && extractCleanFasta(report).seq.slice(overlap.start, overlap.end) === strict ? overlap : null;
-  if (selected) selected.className = 'primer-retained';
-  const note = strictReport === undefined ? '' : `<p class="small coverage-note">${selected ? `Vertical lines mark the high-confidence region: ${selected.start + 1}–${selected.end} (${strict.length} bp) on Full merge.` : strict ? 'The high-confidence region could not be located reliably on Full merge.' : 'No high-confidence region was retained.'}</p>`;
+  coverage.push({ label: 'Consensus', start: selected?.start ?? 0, end: selected?.end ?? 0, className: 'primer-retained', marks: marks.consensus });
+  const note = strictReport === undefined || selected ? '' : `<p class="small coverage-note">${strict ? 'The high-confidence region could not be located reliably on Full merge.' : 'No high-confidence region was retained.'}</p>`;
   return coverage.length ? renderSequenceMap(coverage, length, 'Read coverage on Full merge', selected) + note : '';
 }
 
@@ -164,17 +200,16 @@ export function renderPrimerAlignmentHtml(report, fullReport) {
     if (start < 1 || end < start || end > full.length) return [];
     return [{ direction, start, end }];
   });
-  if (!sites.length) return '<p class="small primer-map-note">No confidently anchored primer sites were returned. Review the primer warnings.</p>';
-
   const bounds = primerTrimBounds(report, fullReport);
+  if (!sites.length && !bounds) return '<p class="small primer-map-note">No confidently anchored primer sites were returned. Review the primer warnings.</p>';
   const mapRows = sites.map(site => ({ label: `${site.direction} ${site.direction === 'Forward' ? '→' : '←'}`, start: site.start - 1, end: site.end, className: 'primer-binding' }));
-  if (bounds) mapRows.push({ label: 'Retained', start: bounds.start, end: bounds.end, className: 'primer-retained' });
-  const map = renderSequenceMap(mapRows, full.length, `Primer binding sites on the ${full.length}-base full merge`);
-  const details = sites.map(site => {
+  mapRows.push({ label: 'Consensus', start: bounds?.start ?? 0, end: bounds?.end ?? 0, className: 'primer-retained', marks: mapAnnotations(fullReport).consensus });
+  const details = sites.map((site, siteIndex) => {
     const heading = site.direction === 'Forward' ? '# Primer Forward Alignment' : '# Primer Reverse Alignment';
     const section = source.slice(source.indexOf(heading) + heading.length).split(/# Primer (?:Forward|Reverse) Alignment|# No significant secondary|# ==== Significant secondary/)[0];
     const lines = source.includes(heading) ? section.split(/\r?\n/) : [];
     const blocks = [];
+    mapRows[siteIndex].marks = [];
     for (let i = 0; i < lines.length - 2; i++) {
       const consensus = lines[i].match(/^consensus\s+(\d+)\s+([ACGTNRYKMSWBDHV-]+)\s+(\d+)\s*$/i);
       const primer = lines[i + 2].match(/^(primer_f|primer_r_rc)\s+(\d+)\s+([ACGTNRYKMSWBDHV-]+)\s+(\d+)\s*$/i);
@@ -182,6 +217,17 @@ export function renderPrimerAlignmentHtml(report, fullReport) {
       if (primer[1] !== (site.direction === 'Forward' ? 'primer_f' : 'primer_r_rc')) continue;
       const baseOffset = lines[i].indexOf(consensus[2]);
       const markers = lines[i + 1].slice(baseOffset).padEnd(consensus[2].length, ' ');
+      let position = site.start + Number(consensus[1]) - 2;
+      for (let column = 0; column < consensus[2].length; column++) {
+        const base = consensus[2][column], opposite = primer[3][column];
+        const type = opposite === '-' ? 'gap' : base === '-' ? '' : /[RYKMSWBDHV]/.test(base) ? 'mixed'
+          : base === 'N' || opposite === 'N' ? 'uncalled' : markers[column] !== '|' ? 'mismatch' : '';
+        if (type) {
+          const start = Math.min(position, site.end - 1);
+          mapRows[siteIndex].marks.push({ start, end: start + 1, type });
+        }
+        if (base !== '-') position++;
+      }
       const decorate = sequence => [...sequence].map((base, column) => {
         const gap = consensus[2][column] === '-' || primer[3][column] === '-';
         const className = gap ? 'aln-gap' : markers[column] !== '|' ? 'aln-mismatch' : '';
@@ -197,6 +243,7 @@ export function renderPrimerAlignmentHtml(report, fullReport) {
     }
     return `<div class="primer-site"><h5>${site.direction} primer <span>${site.start}–${site.end}</span></h5>${blocks.length ? `<pre class="alignment-output" tabindex="0" aria-label="${site.direction} primer alignment">${blocks.join('\n\n')}</pre>` : '<p class="small">The server did not include a base alignment for this site.</p>'}</div>`;
   }).join('');
+  const map = renderSequenceMap(mapRows, full.length, `Primer binding sites on the ${full.length}-base full merge`, bounds);
   return '<p class="small primer-map-note">Positions refer to Full merge. Alignments use the unmasked assembly; the reverse primer is reverse-complemented for comparison.</p>' + map + details;
 }
 

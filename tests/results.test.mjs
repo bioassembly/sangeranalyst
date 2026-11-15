@@ -35,17 +35,18 @@ test('primer map uses server anchors and retained span with full-merge alignment
   const text = html.replace(/<[^>]*>/g, '');
   assert.match(text, /Forward →1–4/);
   assert.match(text, /Reverse ←19–22/);
-  assert.match(text, /Retained5–18/);
+  assert.match(text, /Consensus5–18/);
   assert.match(text, /Full merge\s+19 TGCA 22/);
   assert.match(text, /Primer R RC\s+1 TGCA 4/);
   assert.match(html, /AC<span class="aln-gap">-<\/span>T/);
   assert.match(html, /AC<span class="aln-gap">G<\/span>T/);
+  assert.match(html, /class="map-site map-gap"[^>]*title="Gap: Full merge 3"/);
   assert.doesNotMatch(text, /anchored span|trimmed 5/);
 });
 
 test('primer map handles fallback ends, missing alignments, and invalid anchors without inventing sites', () => {
   const single = primerReport.replace(/# Reverse primer anchored span[^\n]*\n/, '');
-  assert.match(renderPrimerAlignmentHtml(single, primerFull), /Retained<\/span>.*5–18/);
+  assert.match(renderPrimerAlignmentHtml(single, primerFull), /Consensus<\/span>.*5–18/);
   assert.doesNotMatch(renderPrimerAlignmentHtml(single, primerFull), /Reverse ←/);
   assert.match(renderPrimerAlignmentHtml('# Forward primer anchored span [1 - 4]', primerFull), /did not include a base alignment/);
   for (const source of ['', '# Forward primer anchored span [0 - 4]', '# Reverse primer anchored span [19 - 999]']) {
@@ -53,7 +54,7 @@ test('primer map handles fallback ends, missing alignments, and invalid anchors 
     assert.doesNotMatch(renderPrimerAlignmentHtml(source, primerFull), /primer-map-track/);
   }
   const reverseOnly = primerReport.replace(/# Forward primer anchored span[^\n]*\n/, '');
-  assert.match(renderPrimerAlignmentHtml(reverseOnly, primerFull), /Retained<\/span>.*5–18/);
+  assert.match(renderPrimerAlignmentHtml(reverseOnly, primerFull), /Consensus<\/span>.*5–18/);
   const mismatch = primerReport.replace('|| |', '|| .').replace('AC-T', 'AC-A');
   assert.match(renderPrimerAlignmentHtml(mismatch, primerFull), /<span class="aln-mismatch">A<\/span>/);
 });
@@ -242,8 +243,8 @@ test('full-merge map shows read coverage and overlap with one solid length dimen
   const html = renderReadCoverageHtml(conflictReport);
   const text = html.replace(/<[^>]*>/g, '');
   assert.match(text, /Forward →3–9/);
-  assert.match(text, /Reverse1–9/);
-  assert.match(text, /Overlap3–9/);
+  assert.match(text, /Reverse ←1–9/);
+  assert.match(text, /Consensus1–9/);
   assert.match(html, /class="primer-map-axis"><span>9 bp<\/span>/);
   assert.equal(renderReadCoverageHtml('>full\nACGT\n'), '');
   assert.equal(renderReadCoverageHtml(conflictReport.replace('TTACGTACG', 'TTACGTAC')), '');
@@ -252,14 +253,37 @@ test('full-merge map shows read coverage and overlap with one solid length dimen
 test('high-confidence map marks only the retained overlap and never marks a rejected region', () => {
   const html = renderReadCoverageHtml(conflictReport, '>strict\nACGTACG\n');
   assert.match(html, /class="map-boundaries"/);
-  assert.match(html, /high-confidence region: 3–9 \(7 bp\) on Full merge/);
+  assert.match(html.replace(/<[^>]*>/g, ''), /Consensus3–9/);
+  assert.doesNotMatch(html, /Vertical lines mark/);
   assert.match(html, /left:22\.222/);
+  assert.equal((html.match(/class="map-excluded"/g) || []).length, 1);
   const rejected = renderReadCoverageHtml(conflictReport, '>strict\n\n');
-  assert.doesNotMatch(rejected, /class="map-boundaries"/);
+  assert.doesNotMatch(rejected, /class="map-selected"/);
   assert.match(rejected, /No high-confidence region was retained/);
   const unavailable = renderReadCoverageHtml(conflictReport, '>strict\nGGGG\n');
-  assert.doesNotMatch(unavailable, /class="map-boundaries"/);
+  assert.doesNotMatch(unavailable, /class="map-selected"/);
   assert.match(unavailable, /could not be located reliably/);
+});
+
+test('coverage bars mark mixed bases, mismatches, internal gaps and Ns without classifying overhangs as gaps', () => {
+  const full = '>full\nAARGTNCG\n\nforward 1 --AGTNCG 6\n            ||. ||\nreverse_rc 1 AAGC-ACG 7\n';
+  const html = renderReadCoverageHtml(full);
+  assert.match(html, /class="map-site map-mixed"[^>]*title="Mixed base: Full merge 3"/);
+  assert.match(html, /class="map-site map-mismatch"[^>]*title="Mismatch: Full merge 4"/);
+  assert.match(html, /class="map-site map-gap"[^>]*title="Gap: Full merge 5"/);
+  const tracks = [...html.matchAll(/<div class="primer-map-track">([\s\S]*?)<\/div>/g)].map(match => match[1]);
+  assert.doesNotMatch(tracks[0], /map-gap/);
+  assert.match(tracks[1], /map-gap/);
+  assert.doesNotMatch(tracks[2], /map-gap/);
+  assert.match(html, /class="map-site map-uncalled"[^>]*title="Uncalled base: Full merge 6"/);
+  assert.doesNotMatch(html, /title="Gap: Full merge [12](?:–|\")/);
+  assert.match(html, /class="map-selected" style="left:0%;width:100%"/);
+  assert.doesNotMatch(html, /class="map-excluded"/);
+  const primer = '>trimmed\nRGTN\n\n# Forward primer anchored span [1 - 2]\n# Reverse primer anchored span [7 - 8]\n';
+  const primerMap = renderPrimerAlignmentHtml(primer, full);
+  assert.equal((primerMap.match(/class="map-excluded"/g) || []).length, 2);
+  assert.match(primerMap, /class="map-selected" style="left:25%;width:50%"/);
+  assert.match(primerMap, /class="map-site map-mixed"/);
 });
 
 test('clickable conflicts preserve FASTA and alignment text including gaps and columns', () => {
