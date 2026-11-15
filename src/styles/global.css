@@ -159,6 +159,9 @@ input[type="text"] {
   border-radius:8px;
 }
 .info-btn:hover{background:rgba(7,89,181,0.06)}
+.text-info-btn { padding:0; border:0; background:none; color:var(--accent); font:inherit; font-weight:500; cursor:pointer; border-radius:2px; }
+.text-info-btn:hover { background:rgba(7,89,181,0.06); }
+.text-info-btn:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:2px; }
 
 button.primary{
   background:var(--accent);

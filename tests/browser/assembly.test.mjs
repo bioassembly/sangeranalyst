@@ -626,13 +626,15 @@ test('IUPAC information opens beside the input settings and result highlights ha
   await assemble(page);
   assert.equal(await page.locator('#results .base-code-key').count(), 0);
   assert.equal(await page.locator('#peakHeading').textContent(), 'Secondary-peak detection');
-  const button = page.getByRole('button', { name: 'IUPAC base codes', exact: true });
+  const button = page.getByRole('button', { name: 'IUPAC ambiguity codes', exact: true });
   await button.click();
-  assert.equal(await button.textContent(), await page.locator('#secPeakInfoBtn').textContent());
+  assert.equal(await button.textContent(), 'IUPAC ambiguity codes');
+  assert.equal(await button.evaluate(el => getComputedStyle(el).textDecorationLine), 'none');
   assert.equal(await button.getAttribute('aria-expanded'), 'true');
   assert.equal(await page.locator('#iupac_tooltip').isVisible(), true);
   assert.match(await page.locator('#iupac_tooltip').textContent(), /A \/ G/);
-  await button.click();
+  await button.focus();
+  await button.press('Enter');
   assert.equal(await page.locator('#iupac_tooltip').isVisible(), false);
   const decorations = await page.locator('#strictReport .aln-mismatch, #strict .amb').evaluateAll(items => items.map(el => getComputedStyle(el).textDecorationLine));
   assert.ok(decorations.length > 0);
