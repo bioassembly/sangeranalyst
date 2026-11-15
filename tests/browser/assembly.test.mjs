@@ -497,6 +497,43 @@ test('primer-trimmed FASTA retains the explicitly labelled full read alignment',
   assert.equal(raw.text, primerReport);
 }));
 
+test('primer binding sites show server alignments and retained coordinates on mobile', () => withPage(async page => {
+  const primerReport = `>trimmed
+TTGCAAGCTTAGGC
+
+# Forward primer anchored span [1 - 4], trimmed 5' ---> [4].
+# Reverse primer anchored span [19 - 22], trimmed [19] ---> 3' side.
+# Primer Forward Alignment
+consensus       1 ACGT    4
+                  || |
+primer_f        1 AC-T    3
+# Primer Reverse Alignment (using Reverse Complement of primer)
+consensus       1 TGCA    4
+                  ||||
+primer_r_rc     1 TGCA    4
+`;
+  await assemble(page, { ...fixture, warnings: [], outputs: {
+    ...fixture.outputs, consensus_full: '>full\nACGTTTGCAAGCTTAGGCTGCA\n', primer_trim: primerReport,
+  } });
+  await page.getByRole('tab', { name: 'Primer trimmed', exact: true }).click();
+  assert.equal(await page.getByRole('heading', { name: 'Primer binding sites' }).isVisible(), true);
+  assert.match(await page.locator('.primer-map').textContent(), /Retained5–18/);
+  assert.match(await page.getByRole('region', { name: 'Primer binding sites' }).textContent(), /Full merge\s+19 TGCA 22/);
+  assert.equal(await page.getByLabel('Forward primer alignment', { exact: true }).locator('.aln-gap').count(), 2);
+  const box = await page.locator('.primer-map').boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= 390);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.locator('.primer-bindings').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/sanger-primer-bindings-mobile.png' });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator('.primer-bindings').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/sanger-primer-bindings-desktop.png' });
+  const fasta = await download(page, page.locator('.download-fasta-btn[data-target="primerTrim"]'));
+  assert.equal(fasta.text, '>trimmed\nTTGCAAGCTTAGGC\n');
+  const raw = await download(page, page.locator('.download-btn[data-target="primerTrim"]'));
+  assert.equal(raw.text, primerReport);
+}, { width: 390, height: 844 }));
+
 test('missing server alignment is explained without inventing a local preview', () => withPage(async page => {
   await assemble(page, { outputs: { consensus_strict: `>sequence\n${sequence}\n`, consensus_full: '' }, warnings: [] });
   assert.match(await page.locator('#strictReport').textContent(), /No read alignment was returned/);

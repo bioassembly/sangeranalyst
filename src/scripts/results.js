@@ -73,6 +73,63 @@ export function renderAlignmentStats(alignment) {
   }).join('');
 }
 
+// Use server anchors and gapped alignments; never re-align primers in the browser.
+export function renderPrimerAlignmentHtml(report, fullReport) {
+  const source = String(report || '');
+  const full = extractCleanFasta(fullReport).seq;
+  const trimmed = extractCleanFasta(report).seq;
+  const sites = ['Forward', 'Reverse'].flatMap(direction => {
+    const match = source.match(new RegExp(`# ${direction} primer anchored span \\[(\\d+) - (\\d+)\\]`));
+    if (!match) return [];
+    const start = Number(match[1]), end = Number(match[2]);
+    if (start < 1 || end < start || end > full.length) return [];
+    return [{ direction, start, end }];
+  });
+  if (!sites.length) return '<p class="small primer-map-note">No confidently anchored primer sites were returned. Review the primer warnings.</p>';
+
+  const forward = sites.find(site => site.direction === 'Forward');
+  const reverse = sites.find(site => site.direction === 'Reverse');
+  // Infer a fallback end from the retained length; only use sequence search if unique.
+  let left = forward ? forward.end : reverse.start - 1 - trimmed.length;
+  let right = reverse ? reverse.start - 1 : left + trimmed.length;
+  if (!trimmed || left < 0 || right - left !== trimmed.length || full.slice(left, right) !== trimmed) {
+    left = trimmed ? full.indexOf(trimmed) : -1;
+    right = left + trimmed.length;
+    if (left < 0 || full.indexOf(trimmed, left + 1) !== -1) left = -1;
+  }
+  const segment = (start, end, className, label) => `<span class="primer-map-segment ${className}" style="left:${100 * start / full.length}%;width:${100 * (end - start) / full.length}%" title="${label}"></span>`;
+  const retained = left >= 0 && trimmed.length ? `<div class="primer-map-row"><span>Retained</span><div class="primer-map-track">${segment(left, right, 'primer-retained', 'Retained sequence')}</div><span>${left + 1}–${right}</span></div>` : '';
+  const map = `<div class="primer-map" role="group" aria-label="Primer binding sites on the ${full.length}-base full merge">${sites.map(site => `<div class="primer-map-row"><span>${site.direction} ${site.direction === 'Forward' ? '→' : '←'}</span><div class="primer-map-track">${segment(site.start - 1, site.end, 'primer-binding', site.direction + ' primer')}</div><span>${site.start}–${site.end}</span></div>`).join('')}${retained}<div class="primer-map-axis"><span>1</span><span>${full.length} bp</span></div></div>`;
+  const details = sites.map(site => {
+    const heading = site.direction === 'Forward' ? '# Primer Forward Alignment' : '# Primer Reverse Alignment';
+    const section = source.slice(source.indexOf(heading) + heading.length).split(/# Primer (?:Forward|Reverse) Alignment|# No significant secondary|# ==== Significant secondary/)[0];
+    const lines = source.includes(heading) ? section.split(/\r?\n/) : [];
+    const blocks = [];
+    for (let i = 0; i < lines.length - 2; i++) {
+      const consensus = lines[i].match(/^consensus\s+(\d+)\s+([ACGTNRYKMSWBDHV-]+)\s+(\d+)\s*$/i);
+      const primer = lines[i + 2].match(/^(primer_f|primer_r_rc)\s+(\d+)\s+([ACGTNRYKMSWBDHV-]+)\s+(\d+)\s*$/i);
+      if (!consensus || !primer || consensus[2].length !== primer[3].length || !/^[\s|.:]*$/.test(lines[i + 1])) continue;
+      if (primer[1] !== (site.direction === 'Forward' ? 'primer_f' : 'primer_r_rc')) continue;
+      const baseOffset = lines[i].indexOf(consensus[2]);
+      const markers = lines[i + 1].slice(baseOffset).padEnd(consensus[2].length, ' ');
+      const decorate = sequence => [...sequence].map((base, column) => {
+        const gap = consensus[2][column] === '-' || primer[3][column] === '-';
+        const className = gap ? 'aln-gap' : markers[column] !== '|' ? 'aln-mismatch' : '';
+        return className ? `<span class="${className}">${escapeHtml(base)}</span>` : escapeHtml(base);
+      }).join('');
+      const row = (label, start, bases, end) => `${label.padEnd(12)} ${String(start).padStart(7)} ${bases} ${end}`;
+      blocks.push([
+        row('Full merge', site.start + Number(consensus[1]) - 1, decorate(consensus[2]), site.start + Number(consensus[3]) - 1),
+        ' '.repeat(21) + escapeHtml(markers),
+        row(site.direction === 'Forward' ? 'Primer F' : 'Primer R RC', primer[2], decorate(primer[3]), primer[4]),
+      ].join('\n'));
+      i += 2;
+    }
+    return `<div class="primer-site"><h5>${site.direction} primer <span>${site.start}–${site.end}</span></h5>${blocks.length ? `<pre class="alignment-output" tabindex="0" aria-label="${site.direction} primer alignment">${blocks.join('\n\n')}</pre>` : '<p class="small">The server did not include a base alignment for this site.</p>'}</div>`;
+  }).join('');
+  return '<p class="small primer-map-note">Positions refer to Full merge. Alignments use the unmasked assembly; the reverse primer is reverse-complemented for comparison.</p>' + map + details;
+}
+
 function conflictButton(markup, site, index) {
   return `<button type="button" class="conflict-base" data-conflict-index="${index}" title="Inspect consensus base ${site.position} in chromatograms" aria-label="Inspect consensus base ${site.position}: forward ${site.forwardBase}, reverse ${site.reverseBase}">${markup}</button>`;
 }

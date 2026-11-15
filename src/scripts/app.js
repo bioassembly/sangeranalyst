@@ -12,7 +12,7 @@ import {
   normalizePrimer,
 } from './sequtils.js';
 import { createRunState, sampleSlug } from './runstate.js';
-import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, outputConflictSites, renderSecondaryPeaksHtml, primerWarnings, displayAnalysisWarnings } from './results.js';
+import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, outputConflictSites, renderSecondaryPeaksHtml, renderPrimerAlignmentHtml, primerWarnings, displayAnalysisWarnings } from './results.js';
 
 const runState = createRunState();
 let busy = false;
@@ -634,6 +634,8 @@ function renderResults(result) {
   }
   document.getElementById('peakThreshold').textContent = `Secondary peak threshold: ${result.request.settings.secondary_peak_threshold}% of the primary peak height.`;
   document.getElementById('primerTrimTab').hidden = !result.outputs.primer_trim;
+  document.getElementById('primerBindingResults').innerHTML = result.outputs.primer_trim
+    ? renderPrimerAlignmentHtml(result.outputs.primer_trim, result.outputs.consensus_full) : '';
   selectResultTab('strict');
   const primerStatus = document.getElementById('primerOutcome');
   const notes = primerWarnings(result);

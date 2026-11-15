@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, extractConflictSites, outputConflictSites, primerWarnings, extractSecondaryPeaks, renderSecondaryPeaksHtml, displayAnalysisWarnings } from '../src/scripts/results.js';
+import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, extractConflictSites, outputConflictSites, primerWarnings, extractSecondaryPeaks, renderSecondaryPeaksHtml, renderPrimerAlignmentHtml, displayAnalysisWarnings } from '../src/scripts/results.js';
 import { extractCleanFasta, renderReportHtml } from '../src/scripts/sequtils.js';
 
 const alignment = [
@@ -13,6 +13,50 @@ const alignment = [
   'reverse_rc      17 GCTA 20',
 ].join('\n');
 const report = `>consensus\nACGTNRYGCTA\n\n# Identity: 9/12 (75.0%)\n# Gaps: 1/12 (8.3%)\n# Forward primer anchored span [2 - 25], trimmed 5' ---> [25].\n${alignment}\n\n# Significant secondary peaks\n# 25 21 G A 45\n`;
+
+const primerReport = `>trimmed
+TTGCAAGCTTAGGC
+
+# Forward primer anchored span [1 - 4], trimmed 5' ---> [4].
+# Reverse primer anchored span [19 - 22], trimmed [19] ---> 3' side.
+# Primer Forward Alignment
+consensus       1 ACGT    4
+                  || |
+primer_f        1 AC-T    3
+# Primer Reverse Alignment (using Reverse Complement of primer)
+consensus       1 TGCA    4
+                  ||||
+primer_r_rc     1 TGCA    4
+`;
+const primerFull = '>full\nACGTTTGCAAGCTTAGGCTGCA\n';
+
+test('primer map uses server anchors and retained span with full-merge alignment coordinates', () => {
+  const html = renderPrimerAlignmentHtml(primerReport, primerFull);
+  const text = html.replace(/<[^>]*>/g, '');
+  assert.match(text, /Forward →1–4/);
+  assert.match(text, /Reverse ←19–22/);
+  assert.match(text, /Retained5–18/);
+  assert.match(text, /Full merge\s+19 TGCA 22/);
+  assert.match(text, /Primer R RC\s+1 TGCA 4/);
+  assert.match(html, /AC<span class="aln-gap">-<\/span>T/);
+  assert.match(html, /AC<span class="aln-gap">G<\/span>T/);
+  assert.doesNotMatch(text, /anchored span|trimmed 5/);
+});
+
+test('primer map handles fallback ends, missing alignments, and invalid anchors without inventing sites', () => {
+  const single = primerReport.replace(/# Reverse primer anchored span[^\n]*\n/, '');
+  assert.match(renderPrimerAlignmentHtml(single, primerFull), /Retained<\/span>.*5–18/);
+  assert.doesNotMatch(renderPrimerAlignmentHtml(single, primerFull), /Reverse ←/);
+  assert.match(renderPrimerAlignmentHtml('# Forward primer anchored span [1 - 4]', primerFull), /did not include a base alignment/);
+  for (const source of ['', '# Forward primer anchored span [0 - 4]', '# Reverse primer anchored span [19 - 999]']) {
+    assert.match(renderPrimerAlignmentHtml(source, primerFull), /No confidently anchored primer sites/);
+    assert.doesNotMatch(renderPrimerAlignmentHtml(source, primerFull), /primer-map-track/);
+  }
+  const reverseOnly = primerReport.replace(/# Forward primer anchored span[^\n]*\n/, '');
+  assert.match(renderPrimerAlignmentHtml(reverseOnly, primerFull), /Retained<\/span>.*5–18/);
+  const mismatch = primerReport.replace('|| |', '|| .').replace('AC-T', 'AC-A');
+  assert.match(renderPrimerAlignmentHtml(mismatch, primerFull), /<span class="aln-mismatch">A<\/span>/);
+});
 
 test('read alignment preserves server coordinates and spacing while excluding FASTA and commentary', () => {
   assert.deepEqual(extractReadAlignment(report.replace(/\n/g, '\r\n')), {

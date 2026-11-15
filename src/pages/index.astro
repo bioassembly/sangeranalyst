@@ -335,6 +335,10 @@ const baseCodes = [
             <span class="small">Sequence direction: 5′ → 3′</span>
           </div>
           <p class="small blast-help" id="primerTrimBlastStatus" role="status">BLAST copies the FASTA and opens NCBI. Paste it into the query field.</p>
+          <section class="alignment-block primer-bindings" aria-labelledby="primerBindingTitle">
+            <h4 id="primerBindingTitle" class="alignment-title">Primer binding sites</h4>
+            <div id="primerBindingResults"></div>
+          </section>
           <div class="alignment-block">
             <h4 class="alignment-title">Read alignment before primer trimming</h4>
             <p class="small coordinate-note">Full assembly before primer trimming. Positions refer to the quality-trimmed, oriented reads, not the primer-trimmed FASTA.</p>
