@@ -581,8 +581,12 @@ function inspectConflict(id, index, source) {
   view.selected = index;
   renderConflictControls(id);
   const label = resultTabs.find(tab => tab.dataset.output === id).textContent;
-  const positions = [focused.forward && `Forward .ab1 base ${focused.forward}`, focused.reverse && `Reverse .ab1 base ${focused.reverse}`].filter(Boolean).join('; ');
-  document.getElementById('traceReviewLabel').textContent = `${label}, consensus base ${site.position}. ${positions}. Selected bases are outlined in blue.`;
+  const positions = [focused.forward && `Forward .ab1: base ${focused.forward}`, focused.reverse && `Reverse .ab1: base ${focused.reverse}`].filter(Boolean);
+  document.getElementById('traceReviewLabel').textContent = [
+    `${label}: consensus base ${site.position}`,
+    ...positions,
+    'Blue outlines mark the selected bases.',
+  ].join('\n');
   const panel = document.querySelector(`[data-output-panel="${id}"]`);
   traceReturnTarget = { id, element: source?.isConnected ? source : panel.querySelector('[data-conflict-action="inspect"]') };
   const review = document.getElementById('traceReview');

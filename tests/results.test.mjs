@@ -255,7 +255,7 @@ test('primer-trimmed alignment reflows across server block boundaries without sh
   assert.match(rows[1], /forward\s+86 .* 140$/);
   assert.equal(alignment.identity, '115/115 (100.0%)');
   const html = renderPrimerAlignmentHtml(trimmed, full);
-  assert.match(html.replace(/<[^>]*>/g, ''), /Forward →1–160Reverse ←1–160Primer F →1–25Primer R ←141–160Consensus26–140/);
+  assert.match(html.replace(/<[^>]*>/g, ''), /Forward →1–160Primer R ←141–160Reverse ←1–160Primer F →1–25Consensus26–140/);
   assert.match(html, /<i class="primer-binding"><\/i>Primer/);
   assert.match(html, /NNNN/);
 });

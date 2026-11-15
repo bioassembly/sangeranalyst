@@ -370,13 +370,15 @@ test('local Flask smoke: bundled chromatograms assemble and export', { skip: !pr
   await page.getByRole('tab', { name: 'Primer trimmed', exact: true }).click();
   assert.match(await page.locator('#primerTrimReport').textContent(), /forward\s+1/);
   assert.deepEqual(await page.locator('#primerBindingResults .primer-map-row').allTextContents(), [
-    'Forward →29–429', 'Reverse ←1–391', 'Primer F →2–25', 'Primer R ←408–428', 'Consensus26–407',
+    'Forward →29–429', 'Primer R ←408–428', 'Reverse ←1–391', 'Primer F →2–25', 'Consensus26–407',
   ]);
   const trimmedColumns = (await page.locator('#primerTrimReport').textContent()).split('\n')
     .filter(line => line.startsWith('forward')).map(line => line.match(/\d+\s+([A-Z-]+)\s+\d+/)[1].length);
   assert.deepEqual(trimmedColumns, [60, 60, 60, 60, 60, 60, 22]);
   assert.match(await page.locator('#primerBindingResults .map-key').textContent(), /Primer/);
   assert.match(await page.locator('#primerBindingResults .map-key').textContent(), /NNNN/);
+  assert.equal(await page.locator('#primerBindingResults .map-key [aria-label="Uncalled bases"] .map-uncalled').count(), 1);
+  assert.equal(await page.locator('#primerBindingResults .map-key .map-used').evaluate(el => getComputedStyle(el).borderLeftColor), 'rgb(189, 48, 56)');
   await page.locator('#primerBindingResults .primer-map').screenshot({ path: '/tmp/sanger-demo-primer-map.png' });
   await page.locator('#primerTrimReport').screenshot({ path: '/tmp/sanger-demo-trimmed-alignment.png' });
   assert.doesNotMatch(await page.locator('#results').textContent(), /anchored span/);
@@ -389,7 +391,9 @@ test('local Flask smoke: bundled chromatograms assemble and export', { skip: !pr
   for (const [tab, id, position] of [['High confidence', 'strict', 16], ['Full merge', 'full', 44], ['Primer trimmed', 'primerTrim', 19]]) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await page.locator(`#${id} .conflict-base[data-conflict-index="1"]`).click();
-    assert.match(await page.locator('#traceReviewLabel').textContent(), new RegExp(`consensus base ${position}\\.`));
+    assert.match(await page.locator('#traceReviewLabel').textContent(), new RegExp(`consensus base ${position}\n`));
+    assert.deepEqual((await page.locator('#traceReviewLabel').textContent()).split('\n').slice(1), ['Forward .ab1: base 15', 'Reverse .ab1: base 354', 'Blue outlines mark the selected bases.']);
+    assert.equal(await page.locator('#traceReviewLabel').evaluate(el => getComputedStyle(el).whiteSpace), 'pre-line');
     assert.match(await page.locator('#traceCanvasF').getAttribute('aria-label'), /original read base 15/);
     assert.match(await page.locator('#traceCanvasR').getAttribute('aria-label'), /original read base 354/);
     assert.equal(await page.locator('#tracePeakDetail').isVisible(), false);
@@ -530,7 +534,7 @@ primer_r_rc     1 TGCA    4
   assert.equal(await page.getByRole('heading', { name: 'Primer binding sites' }).isVisible(), true);
   assert.match(await page.locator('#primerBindingResults .primer-map').textContent(), /Consensus5–18/);
   assert.deepEqual(await page.locator('#primerBindingResults .primer-map-row').allTextContents(), [
-    'Forward →3–22', 'Reverse ←1–19', 'Primer F →1–4', 'Primer R ←19–22', 'Consensus5–18',
+    'Forward →3–22', 'Primer R ←19–22', 'Reverse ←1–19', 'Primer F →1–4', 'Consensus5–18',
   ]);
   assert.equal(await page.locator('#primerBindingResults .map-excluded').count(), 2);
   assert.equal(await page.locator('#primerBindingResults .map-selected').evaluate(el => getComputedStyle(el).borderLeftColor), 'rgb(189, 48, 56)');
@@ -587,7 +591,7 @@ test('high-confidence map brackets the retained overlap and clears boundaries fo
   assert.equal(await mapRows.nth(1).locator('.map-site.map-gap').count(), 0);
   assert.equal(await mapRows.nth(2).locator('.map-site.map-gap').count(), 0);
   assert.equal(await mapRows.nth(0).locator('.map-site.map-gap').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)');
-  assert.equal(await page.locator('#strictReadCoverage .map-excluded').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(214, 219, 226, 0.3)');
+  assert.equal(await page.locator('#strictReadCoverage .map-excluded').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(214, 219, 226, 0.12)');
   assert.doesNotMatch(await page.locator('#strictReadCoverage').textContent(), /Vertical lines mark/);
   assert.equal(await page.locator('#strictReadCoverage .map-selected').evaluate(el => getComputedStyle(el).borderLeftStyle), 'solid');
   await page.locator('#strictReadCoverage').scrollIntoViewIfNeeded();

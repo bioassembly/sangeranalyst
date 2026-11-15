@@ -165,7 +165,7 @@ function renderSequenceMap(rows, length, label, selection = null) {
     return `<div class="primer-map-row"><span>${row.label}</span><div class="primer-map-track">${row.end > row.start ? `<span class="primer-map-segment ${row.className}" style="${style(row.start, row.end)}"></span>${marks}` : ''}</div><span>${row.end > row.start ? `${row.start + 1}–${row.end}` : 'None'}</span></div>`;
   }).join('');
   const primerKey = rows.some(row => row.className === 'primer-binding') ? '<span><i class="primer-binding"></i>Primer</span>' : '';
-  const legend = `<div class="map-key" aria-label="Coverage map legend"><span><i class="map-used"></i>Used for consensus</span><span><i class="map-not-used"></i>Not used</span>${primerKey}<span><i class="map-mismatch"></i>Mismatch</span><span><i class="map-mixed"></i>Mixed base</span><span><i class="map-gap"></i>Gap</span><span aria-label="Uncalled bases"><code class="map-n-key">NNNN</code></span></div>`;
+  const legend = `<div class="map-key" aria-label="Coverage map legend"><span><i class="map-used"></i>Used for consensus</span><span><i class="map-not-used"></i>Not used</span>${primerKey}<span><i class="map-mismatch"></i>Mismatch</span><span><i class="map-mixed"></i>Mixed base</span><span><i class="map-gap"></i>Gap</span><span aria-label="Uncalled bases"><i class="map-uncalled"></i><code class="map-n-key">NNNN</code></span></div>`;
   return `<div class="primer-map" role="group" aria-label="${label}"><div class="sequence-map-body">${tracks}${boundaries}</div><div class="primer-map-axis"><span>${length} bp</span></div>${legend}</div>`;
 }
 
@@ -211,7 +211,7 @@ export function renderPrimerAlignmentHtml(report, fullReport) {
   for (const [read, label, className] of [['forward', 'Forward →', 'read-forward'], ['reverse', 'Reverse ←', 'read-reverse']]) {
     const sequence = readRows.filter(row => row[1].toLowerCase().startsWith(read)).map(row => row[3]).join('');
     const start = sequence.search(/[^-]/);
-    if (sequence.length === full.length && start >= 0) mapRows.push({ label, start, end: sequence.replace(/-+$/, '').length, className, marks: annotations[read] });
+    if (sequence.length === full.length && start >= 0) mapRows.push({ label, read, sequence, start, end: sequence.replace(/-+$/, '').length, className, marks: annotations[read] });
   }
   const primerRowOffset = mapRows.length;
   mapRows.push(...sites.map(site => ({ label: `Primer ${site.direction === 'Forward' ? 'F →' : 'R ←'}`, start: site.start - 1, end: site.end, className: 'primer-binding' })));
@@ -256,7 +256,20 @@ export function renderPrimerAlignmentHtml(report, fullReport) {
     }
     return `<div class="primer-site"><h5>${site.direction} primer <span>${site.start}–${site.end}</span></h5>${blocks.length ? `<pre class="alignment-output" tabindex="0" aria-label="${site.direction} primer alignment">${blocks.join('\n\n')}</pre>` : '<p class="small">The server did not include a base alignment for this site.</p>'}</div>`;
   }).join('');
-  const map = renderSequenceMap(mapRows, full.length, `Primer binding sites on the ${full.length}-base full merge`, bounds);
+  // Place primers beside the read covering the binding site. If both cover it
+  // equally, use the opposite template strand (F primer on reverse, R on forward).
+  const reads = mapRows.slice(0, primerRowOffset);
+  const grouped = new Map(reads.map(read => [read, []]));
+  const unassigned = [];
+  sites.forEach((site, index) => {
+    const preferred = site.direction === 'Forward' ? 'reverse' : 'forward';
+    const candidates = reads.map(read => ({ read, covered: read.sequence.slice(site.start - 1, site.end).replace(/-/g, '').length }))
+      .filter(candidate => candidate.covered > 0)
+      .sort((a, b) => b.covered - a.covered || Number(b.read.read === preferred) - Number(a.read.read === preferred));
+    (candidates.length ? grouped.get(candidates[0].read) : unassigned).push(mapRows[primerRowOffset + index]);
+  });
+  const orderedRows = [...reads.flatMap(read => [read, ...grouped.get(read)]), ...unassigned, mapRows.at(-1)];
+  const map = renderSequenceMap(orderedRows, full.length, `Primer binding sites on the ${full.length}-base full merge`, bounds);
   return '<p class="small primer-map-note">Positions refer to Full merge. Alignments use the unmasked assembly; the reverse primer is reverse-complemented for comparison.</p>' + map + details;
 }
 
