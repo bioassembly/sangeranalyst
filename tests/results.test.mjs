@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, extractConflictSites, outputConflictSites, primerWarnings, extractSecondaryPeaks, renderSecondaryPeaksHtml, renderPrimerAlignmentHtml, displayAnalysisWarnings } from '../src/scripts/results.js';
+import { extractReadAlignment, extractPrimerReadAlignment, renderReadCoverageHtml, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, extractConflictSites, outputConflictSites, primerWarnings, extractSecondaryPeaks, renderSecondaryPeaksHtml, renderPrimerAlignmentHtml, displayAnalysisWarnings } from '../src/scripts/results.js';
 import { extractCleanFasta, renderReportHtml } from '../src/scripts/sequtils.js';
 
 const alignment = [
@@ -214,12 +214,52 @@ test('conflict navigation keeps absolute trace positions and excludes single-rea
   assert.deepEqual(extractConflictSites('# No conflicts found.'), { available: true, rows: [] });
 });
 
-test('primer-trimmed conflict positions map only through a unique exact full-merge segment', () => {
+test('primer-trimmed conflict positions follow the cropped alignment while preserving trace positions', () => {
   const mapped = outputConflictSites('>trimmed\nCGTAC\n', conflictReport, true);
-  assert.deepEqual(mapped.rows.map(r => [r.position, r.alignmentPosition, r.forwardPosition, r.reversePosition]), [[2, 5, 12, 25], [3, 6, null, 26]]);
+  assert.deepEqual(mapped.rows.map(r => [r.position, r.alignmentPosition, r.forwardPosition, r.reversePosition]), [[2, 2, 12, 25], [3, 3, null, 26]]);
   assert.deepEqual(outputConflictSites('>trimmed\nACG\n', conflictReport, true), { available: false, rows: [] });
   assert.deepEqual(outputConflictSites('>trimmed\nGGGG\n', conflictReport, true), { available: false, rows: [] });
   assert.deepEqual(outputConflictSites('', conflictReport, true), { available: false, rows: [] });
+});
+
+test('primer-trimmed read alignment crops columns, retains read coordinates, and recalculates metrics', () => {
+  const trimmed = extractPrimerReadAlignment('>trimmed\nCGTAC\n', conflictReport);
+  assert.match(trimmed.text, /forward\s+2 CG-AC 5/);
+  assert.match(trimmed.text, /reverse_rc\s+4 CATAC 8/);
+  assert.equal(trimmed.identity, '3/5 (60.0%)');
+  assert.equal(trimmed.gaps, '1/5 (20.0%)');
+  assert.equal(extractPrimerReadAlignment('>trimmed\nACG\n', conflictReport).text, '');
+  assert.equal(extractPrimerReadAlignment('>trimmed\nCGTAC\n', '>full\nTTACGTACG\n').text, '');
+  const anchored = '>trimmed\nACG\n\n# Forward primer anchored span [1 - 6]\n';
+  assert.match(extractPrimerReadAlignment(anchored, conflictReport).text, /forward\s+4 ACG 6/);
+  const sites = outputConflictSites('>trimmed\nCGTAC\n', conflictReport, true).rows;
+  const html = renderAlignmentHtml(trimmed.text, sites);
+  assert.equal((html.match(/data-conflict-index="0"/g) || []).length, 3);
+  assert.equal(html.replace(/<[^>]*>/g, ''), trimmed.text);
+});
+
+test('full-merge map shows read coverage and overlap with one solid length dimension', () => {
+  const html = renderReadCoverageHtml(conflictReport);
+  const text = html.replace(/<[^>]*>/g, '');
+  assert.match(text, /Forward →3–9/);
+  assert.match(text, /Reverse1–9/);
+  assert.match(text, /Overlap3–9/);
+  assert.match(html, /class="primer-map-axis"><span>9 bp<\/span>/);
+  assert.equal(renderReadCoverageHtml('>full\nACGT\n'), '');
+  assert.equal(renderReadCoverageHtml(conflictReport.replace('TTACGTACG', 'TTACGTAC')), '');
+});
+
+test('high-confidence map marks only the retained overlap and never marks a rejected region', () => {
+  const html = renderReadCoverageHtml(conflictReport, '>strict\nACGTACG\n');
+  assert.match(html, /class="map-boundaries"/);
+  assert.match(html, /high-confidence region: 3–9 \(7 bp\) on Full merge/);
+  assert.match(html, /left:22\.222/);
+  const rejected = renderReadCoverageHtml(conflictReport, '>strict\n\n');
+  assert.doesNotMatch(rejected, /class="map-boundaries"/);
+  assert.match(rejected, /No high-confidence region was retained/);
+  const unavailable = renderReadCoverageHtml(conflictReport, '>strict\nGGGG\n');
+  assert.doesNotMatch(unavailable, /class="map-boundaries"/);
+  assert.match(unavailable, /could not be located reliably/);
 });
 
 test('clickable conflicts preserve FASTA and alignment text including gaps and columns', () => {

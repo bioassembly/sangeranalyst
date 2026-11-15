@@ -1017,6 +1017,10 @@ pre .amb{
 .coordinate-note { margin: 0; font-size: 12px; line-height: 1.6; color: var(--result-muted); }
 .primer-map-note { margin: 0 0 16px; color: var(--result-muted); font-size: 12px; line-height: 1.6; }
 .primer-map { margin: 16px 0 20px; font-size: 12px; color: var(--result-ink); font-variant-numeric: tabular-nums; }
+.sequence-map-body { position: relative; display: flow-root; }
+.map-boundaries { position: absolute; top: 4px; bottom: 4px; left: 88px; right: 96px; pointer-events: none; }
+.map-boundaries > span { position: absolute; height: 100%; box-sizing: border-box; border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); background: rgb(0 123 255 / 5%); }
+.coverage-note { margin: -6px 0 16px; font-size: 12px; line-height: 1.6; color: var(--result-muted); }
 .primer-map-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 84px; align-items: center; gap: 12px; margin: 10px 0; }
 .primer-map-row > span:last-child { text-align: right; }
 .primer-map-row > span:first-child { white-space: nowrap; }
@@ -1024,7 +1028,11 @@ pre .amb{
 .primer-map-segment { position: absolute; height: 100%; min-width: 2px; border-radius: 3px; }
 .primer-binding { background: #718096; }
 .primer-retained { background: var(--accent); }
-.primer-map-axis { display: flex; justify-content: space-between; margin: 0 96px 0 88px; color: var(--result-muted); }
+.read-forward { background: #3578bd; }
+.read-reverse { background: #438784; }
+.primer-map-axis { position: relative; display: flex; justify-content: center; align-items: center; margin: 14px 96px 0 88px; height: 12px; border-left: 1px solid var(--result-muted); border-right: 1px solid var(--result-muted); color: var(--result-muted); }
+.primer-map-axis::before { content: ''; position: absolute; left: 0; right: 0; border-top: 1px solid var(--result-muted); }
+.primer-map-axis span { position: relative; padding: 0 8px; background: #fff; white-space: nowrap; }
 .primer-site { margin-top: 18px; }
 .primer-site h5 { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; font-size: 13px; font-weight: 500; color: var(--result-ink); }
 .primer-site h5 span { color: var(--result-muted); font-weight: 400; }
@@ -1032,6 +1040,7 @@ pre .amb{
 @media (max-width: 560px) {
   .primer-map-row { grid-template-columns: 62px minmax(0, 1fr) 66px; gap: 8px; }
   .primer-map-axis { margin-left: 70px; margin-right: 74px; }
+  .map-boundaries { left: 70px; right: 74px; }
 }
 .alignment-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; color: var(--result-ink); font-variant-numeric: tabular-nums; }
 .alignment-stat { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 12px 14px; background: var(--result-surface); border: 1px solid var(--result-line); border-radius: 6px; }

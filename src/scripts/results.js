@@ -27,6 +27,58 @@ export function extractReadAlignment(report) {
   return { text, identity: metric('Identity'), gaps: metric('Gaps') };
 }
 
+function primerTrimBounds(report, fullReport) {
+  const full = extractCleanFasta(fullReport).seq;
+  const trimmed = extractCleanFasta(report).seq;
+  if (!trimmed) return null;
+  const forward = String(report || '').match(/# Forward primer anchored span \[\d+ - (\d+)\]/);
+  const reverse = String(report || '').match(/# Reverse primer anchored span \[(\d+) - \d+\]/);
+  let start = forward ? Number(forward[1]) : reverse ? Number(reverse[1]) - 1 - trimmed.length : -1;
+  let end = reverse ? Number(reverse[1]) - 1 : start + trimmed.length;
+  if (start < 0 || end - start !== trimmed.length || full.slice(start, end) !== trimmed) {
+    start = full.indexOf(trimmed);
+    end = start + trimmed.length;
+    if (start < 0 || full.indexOf(trimmed, start + 1) !== -1) return null;
+  }
+  return { start, end };
+}
+
+// Slice existing server alignment columns, retaining oriented-read coordinates.
+export function extractPrimerReadAlignment(report, fullReport) {
+  const bounds = primerTrimBounds(report, fullReport);
+  const alignment = extractReadAlignment(fullReport);
+  const empty = { text: '', identity: '', gaps: '' };
+  if (!bounds || !alignment.text) return empty;
+  const blocks = alignment.text.split('\n\n');
+  const width = blocks.reduce((sum, block) => sum + block.split('\n')[0].match(READ_ROW)[3].length, 0);
+  if (width !== extractCleanFasta(fullReport).seq.length) return empty;
+  let offset = 0, identity = 0, gaps = 0;
+  const cropped = [];
+  for (const block of blocks) {
+    const lines = block.split('\n');
+    const forward = lines[0].match(READ_ROW), reverse = lines[2].match(READ_ROW);
+    const start = Math.max(0, bounds.start - offset);
+    const end = Math.min(forward[3].length, bounds.end - offset);
+    offset += forward[3].length;
+    if (start >= end) continue;
+    const f = forward[3].slice(start, end), r = reverse[3].slice(start, end);
+    const markers = [...f].map((base, column) => {
+      if (base === '-' || r[column] === '-') { gaps++; return ' '; }
+      if (base === r[column]) { identity++; return '|'; }
+      return '.';
+    }).join('');
+    const row = (source, bases) => {
+      const position = Number(source[2].trim()) + source[3].slice(0, start).replace(/-/g, '').length;
+      const last = position + bases.replace(/-/g, '').length - 1;
+      return `${source[1].padEnd(12)} ${String(position).padStart(7)} ${bases} ${Math.max(position, last)}`;
+    };
+    cropped.push([row(forward, f), ' '.repeat(21) + markers, row(reverse, r)].join('\n'));
+  }
+  const length = bounds.end - bounds.start;
+  const metric = count => `${count}/${length} (${(100 * count / length).toFixed(1)}%)`;
+  return { text: cropped.join('\n\n'), identity: metric(identity), gaps: metric(gaps) };
+}
+
 export function renderAlignmentHtml(text, sites = []) {
   const lines = String(text || '').split('\n');
   const byColumn = new Map(sites.map((site, index) => [site.alignmentPosition, { site, index }]));
@@ -73,11 +125,38 @@ export function renderAlignmentStats(alignment) {
   }).join('');
 }
 
+function renderSequenceMap(rows, length, label, selection = null) {
+  const boundaries = selection ? `<div class="map-boundaries" aria-hidden="true"><span style="left:${100 * selection.start / length}%;width:${100 * (selection.end - selection.start) / length}%"></span></div>` : '';
+  return `<div class="primer-map" role="group" aria-label="${label}"><div class="sequence-map-body">${rows.map(row => `<div class="primer-map-row"><span>${row.label}</span><div class="primer-map-track"><span class="primer-map-segment ${row.className}" style="left:${100 * row.start / length}%;width:${100 * (row.end - row.start) / length}%"></span></div><span>${row.start + 1}–${row.end}</span></div>`).join('')}${boundaries}</div><div class="primer-map-axis"><span>${length} bp</span></div></div>`;
+}
+
+export function renderReadCoverageHtml(report, strictReport) {
+  const rows = extractReadAlignment(report).text.split('\n').map(line => line.match(READ_ROW)).filter(Boolean);
+  const forward = rows.filter(row => row[1] === 'forward').map(row => row[3]).join('');
+  const reverse = rows.filter(row => /^reverse/i.test(row[1])).map(row => row[3]).join('');
+  const length = extractCleanFasta(report).seq.length;
+  if (!length || forward.length !== length || reverse.length !== length) return '';
+  const coverage = [];
+  for (const [sequence, label, className] of [[forward, 'Forward →', 'read-forward'], [reverse, 'Reverse', 'read-reverse']]) {
+    const start = sequence.search(/[^-]/);
+    if (start < 0) continue;
+    coverage.push({ label, start, end: sequence.replace(/-+$/, '').length, className });
+  }
+  const shared = [...forward].flatMap((base, index) => base !== '-' && reverse[index] !== '-' ? [index] : []);
+  if (shared.length) coverage.push({ label: 'Overlap', start: shared[0], end: shared.at(-1) + 1, className: 'primer-binding' });
+  const strict = extractCleanFasta(strictReport).seq;
+  const overlap = coverage.find(row => row.label === 'Overlap');
+  const selected = strictReport !== undefined && strict && overlap && overlap.end - overlap.start === strict.length
+    && extractCleanFasta(report).seq.slice(overlap.start, overlap.end) === strict ? overlap : null;
+  if (selected) selected.className = 'primer-retained';
+  const note = strictReport === undefined ? '' : `<p class="small coverage-note">${selected ? `Vertical lines mark the high-confidence region: ${selected.start + 1}–${selected.end} (${strict.length} bp) on Full merge.` : strict ? 'The high-confidence region could not be located reliably on Full merge.' : 'No high-confidence region was retained.'}</p>`;
+  return coverage.length ? renderSequenceMap(coverage, length, 'Read coverage on Full merge', selected) + note : '';
+}
+
 // Use server anchors and gapped alignments; never re-align primers in the browser.
 export function renderPrimerAlignmentHtml(report, fullReport) {
   const source = String(report || '');
   const full = extractCleanFasta(fullReport).seq;
-  const trimmed = extractCleanFasta(report).seq;
   const sites = ['Forward', 'Reverse'].flatMap(direction => {
     const match = source.match(new RegExp(`# ${direction} primer anchored span \\[(\\d+) - (\\d+)\\]`));
     if (!match) return [];
@@ -87,19 +166,10 @@ export function renderPrimerAlignmentHtml(report, fullReport) {
   });
   if (!sites.length) return '<p class="small primer-map-note">No confidently anchored primer sites were returned. Review the primer warnings.</p>';
 
-  const forward = sites.find(site => site.direction === 'Forward');
-  const reverse = sites.find(site => site.direction === 'Reverse');
-  // Infer a fallback end from the retained length; only use sequence search if unique.
-  let left = forward ? forward.end : reverse.start - 1 - trimmed.length;
-  let right = reverse ? reverse.start - 1 : left + trimmed.length;
-  if (!trimmed || left < 0 || right - left !== trimmed.length || full.slice(left, right) !== trimmed) {
-    left = trimmed ? full.indexOf(trimmed) : -1;
-    right = left + trimmed.length;
-    if (left < 0 || full.indexOf(trimmed, left + 1) !== -1) left = -1;
-  }
-  const segment = (start, end, className, label) => `<span class="primer-map-segment ${className}" style="left:${100 * start / full.length}%;width:${100 * (end - start) / full.length}%" title="${label}"></span>`;
-  const retained = left >= 0 && trimmed.length ? `<div class="primer-map-row"><span>Retained</span><div class="primer-map-track">${segment(left, right, 'primer-retained', 'Retained sequence')}</div><span>${left + 1}–${right}</span></div>` : '';
-  const map = `<div class="primer-map" role="group" aria-label="Primer binding sites on the ${full.length}-base full merge">${sites.map(site => `<div class="primer-map-row"><span>${site.direction} ${site.direction === 'Forward' ? '→' : '←'}</span><div class="primer-map-track">${segment(site.start - 1, site.end, 'primer-binding', site.direction + ' primer')}</div><span>${site.start}–${site.end}</span></div>`).join('')}${retained}<div class="primer-map-axis"><span>1</span><span>${full.length} bp</span></div></div>`;
+  const bounds = primerTrimBounds(report, fullReport);
+  const mapRows = sites.map(site => ({ label: `${site.direction} ${site.direction === 'Forward' ? '→' : '←'}`, start: site.start - 1, end: site.end, className: 'primer-binding' }));
+  if (bounds) mapRows.push({ label: 'Retained', start: bounds.start, end: bounds.end, className: 'primer-retained' });
+  const map = renderSequenceMap(mapRows, full.length, `Primer binding sites on the ${full.length}-base full merge`);
   const details = sites.map(site => {
     const heading = site.direction === 'Forward' ? '# Primer Forward Alignment' : '# Primer Reverse Alignment';
     const section = source.slice(source.indexOf(heading) + heading.length).split(/# Primer (?:Forward|Reverse) Alignment|# No significant secondary|# ==== Significant secondary/)[0];
@@ -186,13 +256,10 @@ export function extractConflictSites(report) {
 export function outputConflictSites(report, fullReport, primerTrimmed = false) {
   if (!primerTrimmed) return extractConflictSites(report);
   const source = extractConflictSites(fullReport);
-  const full = extractCleanFasta(fullReport).seq;
-  const trimmed = extractCleanFasta(report).seq;
-  const offset = trimmed ? full.indexOf(trimmed) : -1;
-  // Do not guess a coordinate offset for repeated/absent sequence fragments.
-  if (!source.available || offset < 0 || full.indexOf(trimmed, offset + 1) !== -1) return { available: false, rows: [] };
-  return { available: true, rows: source.rows.filter(row => row.position > offset && row.position <= offset + trimmed.length)
-    .map(row => ({ ...row, position: row.position - offset })) };
+  const bounds = primerTrimBounds(report, fullReport);
+  if (!source.available || !bounds) return { available: false, rows: [] };
+  return { available: true, rows: source.rows.filter(row => row.position > bounds.start && row.position <= bounds.end)
+    .map(row => ({ ...row, position: row.position - bounds.start, alignmentPosition: row.alignmentPosition - bounds.start })) };
 }
 
 // Routine successful primer coordinates stay in downloadable reports. Fallbacks

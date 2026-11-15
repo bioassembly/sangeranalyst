@@ -12,7 +12,7 @@ import {
   normalizePrimer,
 } from './sequtils.js';
 import { createRunState, sampleSlug } from './runstate.js';
-import { extractReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, outputConflictSites, renderSecondaryPeaksHtml, renderPrimerAlignmentHtml, primerWarnings, displayAnalysisWarnings } from './results.js';
+import { extractReadAlignment, extractPrimerReadAlignment, renderAlignmentHtml, renderAlignmentStats, renderConsensusHtml, outputConflictSites, renderSecondaryPeaksHtml, renderPrimerAlignmentHtml, renderReadCoverageHtml, primerWarnings, displayAnalysisWarnings } from './results.js';
 
 const runState = createRunState();
 let busy = false;
@@ -524,7 +524,7 @@ async function readPrimer(target) {
   catch (error) { fieldError(input, `${target === 'F' ? 'Forward' : 'Reverse'} primer: ${error.message}`); }
 }
 
-function renderOutput(id, report, alignmentReport = report) {
+function renderOutput(id, report) {
   const fasta = extractCleanFasta(report || '');
   const conflicts = outputConflictSites(report, runState.result.outputs.consensus_full, id === 'primerTrim');
   const orientation = runState.result.orientation;
@@ -537,7 +537,7 @@ function renderOutput(id, report, alignmentReport = report) {
   seqEl.hidden = !fasta.seq && id !== 'strict';
   const empty = document.getElementById(`${id}Empty`);
   if (empty) empty.hidden = Boolean(fasta.seq);
-  const alignment = extractReadAlignment(alignmentReport);
+  const alignment = id === 'primerTrim' ? extractPrimerReadAlignment(report, runState.result.outputs.consensus_full) : extractReadAlignment(report);
   document.getElementById(`${id}Report`).innerHTML = alignment.text
     ? renderAlignmentHtml(alignment.text, conflicts.rows)
     : 'No read alignment was returned for this output. Review the downloadable report and analysis warnings.';
@@ -628,10 +628,10 @@ document.getElementById('traceReset').addEventListener('click', () => {
 
 function renderResults(result) {
   for (const [id, key] of Object.entries(OUTPUT_KEYS)) {
-    // Primer reports contain primer/consensus matches, not a paired-read
-    // alignment. Show the full assembly alignment with an explicit coordinate note.
-    renderOutput(id, result.outputs[key], id === 'primerTrim' ? result.outputs.consensus_full : result.outputs[key]);
+    renderOutput(id, result.outputs[key]);
   }
+  document.getElementById('fullReadCoverage').innerHTML = renderReadCoverageHtml(result.outputs.consensus_full);
+  document.getElementById('strictReadCoverage').innerHTML = renderReadCoverageHtml(result.outputs.consensus_full, result.outputs.consensus_strict || '');
   document.getElementById('peakThreshold').textContent = `Secondary peak threshold: ${result.request.settings.secondary_peak_threshold}% of the primary peak height.`;
   document.getElementById('primerTrimTab').hidden = !result.outputs.primer_trim;
   document.getElementById('primerBindingResults').innerHTML = result.outputs.primer_trim

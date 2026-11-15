@@ -236,6 +236,7 @@ const baseCodes = [
           <div class="alignment-block">
             <h4 class="alignment-title">Final read alignment</h4>
             <p class="small coordinate-note">Positions start at 1 within the overlapping portion of each oriented read.</p>
+            <div id="strictReadCoverage"></div>
             <dl id="strictAlignmentStats" class="alignment-stats"></dl>
             <div id="strictConflicts" class="conflict-review"></div>
             <pre id="strictReport" class="alignment-output" aria-label="Final read alignment" tabindex="0"></pre>
@@ -288,6 +289,7 @@ const baseCodes = [
           <div class="alignment-block">
             <h4 class="alignment-title">Final read alignment</h4>
             <p class="small coordinate-note">Positions start at 1 within each quality-trimmed, oriented read. Terminal gaps indicate single-read coverage.</p>
+            <div id="fullReadCoverage"></div>
             <dl id="fullAlignmentStats" class="alignment-stats"></dl>
             <div id="fullConflicts" class="conflict-review"></div>
             <pre id="fullReport" class="alignment-output" aria-label="Final read alignment" tabindex="0"></pre>
@@ -340,11 +342,11 @@ const baseCodes = [
             <div id="primerBindingResults"></div>
           </section>
           <div class="alignment-block">
-            <h4 class="alignment-title">Read alignment before primer trimming</h4>
-            <p class="small coordinate-note">Full assembly before primer trimming. Positions refer to the quality-trimmed, oriented reads, not the primer-trimmed FASTA.</p>
+            <h4 class="alignment-title">Read alignment after primer trimming</h4>
+            <p class="small coordinate-note">Only the retained sequence is shown. Read positions refer to the quality-trimmed, oriented reads.</p>
             <dl id="primerTrimAlignmentStats" class="alignment-stats"></dl>
             <div id="primerTrimConflicts" class="conflict-review"></div>
-            <pre id="primerTrimReport" class="alignment-output" aria-label="Read alignment before primer trimming" tabindex="0"></pre>
+            <pre id="primerTrimReport" class="alignment-output" aria-label="Read alignment after primer trimming" tabindex="0"></pre>
             <div class="alignment-key" aria-label="Base highlighting legend"><span><code class="aln-mismatch">A</code> Mismatch</span><span><code class="amb">R</code> Mixed base</span><span><code class="uncalled">N</code> Uncalled</span><span><code class="aln-gap">–</code> Gap</span><span><code>|</code> Match</span></div>
           </div>
           <div class="report-actions">

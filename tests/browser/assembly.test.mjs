@@ -374,7 +374,7 @@ test('local Flask smoke: bundled chromatograms assemble and export', { skip: !pr
   assert.match(fasta.text.split('\n').slice(1).join(''), /^[ACGTNRYKMSWBDHV]+$/);
   await page.screenshot({ path: '/tmp/sanger-demo-final-results.png', fullPage: true, style: 'astro-dev-toolbar { display: none; }' });
   assert.match(await page.locator('#strictReport').textContent(), /forward\s+1/);
-  assert.equal(await page.locator('#fullReport').textContent(), await page.locator('#primerTrimReport').textContent());
+  assert.notEqual(await page.locator('#fullReport').textContent(), await page.locator('#primerTrimReport').textContent());
   await page.getByLabel('Choose a peak').selectOption({ label: 'Reverse read 8: T / G' });
   for (const [tab, id, position] of [['High confidence', 'strict', 16], ['Full merge', 'full', 44], ['Primer trimmed', 'primerTrim', 19]]) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
@@ -476,7 +476,7 @@ test('repeated copy restores its original label', () => withPage(async page => {
 }));
 
 
-test('primer-trimmed FASTA retains the explicitly labelled full read alignment', () => withPage(async page => {
+test('primer-trimmed FASTA shows only the retained read alignment', () => withPage(async page => {
   const primerReport = ">trimmed\nACGTRYSWACGT\n\n# Forward primer anchored span [2 - 25], trimmed 5' ---> [25].\n# Reverse primer anchored span [408 - 428], trimmed [408] ---> 3' side.\n\nconsensus        1 ACGT 4\n                  ||||\nprimer_f         1 ACGT 4";
   await assemble(page, {
     ...fixture, warnings: [], outputs: { ...fixture.outputs, primer_trim: primerReport },
@@ -489,8 +489,9 @@ test('primer-trimmed FASTA retains the explicitly labelled full read alignment',
   assert.equal(await page.locator('#primerTrim').isVisible(), true);
   assert.equal(await page.locator('#primerOutcome').isVisible(), false);
   assert.doesNotMatch(await page.locator('#results').textContent(), /anchored span/);
-  assert.equal(await page.locator('#primerTrimReport').textContent(), alignment);
-  assert.match(await page.locator('#primerResultBlock .coordinate-note').textContent(), /not the primer-trimmed FASTA/);
+  assert.match(await page.locator('#primerTrimReport').textContent(), /forward\s+5 ACGTACGTACGT 16/);
+  assert.doesNotMatch(await page.locator('#primerTrimReport').textContent(), /forward\s+1 /);
+  assert.match(await page.locator('#primerResultBlock .coordinate-note').textContent(), /Only the retained sequence/);
   const fasta = await download(page, page.locator('.download-fasta-btn[data-target="primerTrim"]'));
   assert.equal(fasta.text, '>trimmed\nACGTRYSWACGT\n');
   const raw = await download(page, page.locator('.download-btn[data-target="primerTrim"]'));
@@ -517,10 +518,12 @@ primer_r_rc     1 TGCA    4
   } });
   await page.getByRole('tab', { name: 'Primer trimmed', exact: true }).click();
   assert.equal(await page.getByRole('heading', { name: 'Primer binding sites' }).isVisible(), true);
-  assert.match(await page.locator('.primer-map').textContent(), /Retained5–18/);
+  assert.match(await page.locator('#primerBindingResults .primer-map').textContent(), /Retained5–18/);
+  assert.equal(await page.locator('#primerBindingResults .primer-map-axis').textContent(), '22 bp');
+  assert.equal(await page.locator('#primerBindingResults .primer-map-axis').evaluate(el => getComputedStyle(el, '::before').borderTopStyle), 'solid');
   assert.match(await page.getByRole('region', { name: 'Primer binding sites' }).textContent(), /Full merge\s+19 TGCA 22/);
   assert.equal(await page.getByLabel('Forward primer alignment', { exact: true }).locator('.aln-gap').count(), 2);
-  const box = await page.locator('.primer-map').boundingBox();
+  const box = await page.locator('#primerBindingResults .primer-map').boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= 390);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.locator('.primer-bindings').scrollIntoViewIfNeeded();
@@ -532,6 +535,32 @@ primer_r_rc     1 TGCA    4
   assert.equal(fasta.text, '>trimmed\nTTGCAAGCTTAGGC\n');
   const raw = await download(page, page.locator('.download-btn[data-target="primerTrim"]'));
   assert.equal(raw.text, primerReport);
+}, { width: 390, height: 844 }));
+
+test('full merge shows read spans and overlap without changing the base alignment', () => withPage(async page => {
+  await assemble(page);
+  await page.getByRole('tab', { name: 'Full merge', exact: true }).click();
+  assert.match(await page.locator('#fullReadCoverage').textContent(), /Forward →1–20Reverse1–20Overlap1–2020 bp/);
+  assert.equal(await page.locator('#fullReport').textContent(), alignment);
+  assert.equal(await page.locator('#fullReadCoverage .primer-map-axis').evaluate(el => getComputedStyle(el, '::before').borderTopStyle), 'solid');
+  await page.locator('#fullReadCoverage').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/sanger-full-merge-coverage.png' });
+}, { width: 390, height: 844 }));
+
+test('high-confidence map brackets the retained overlap and clears boundaries for empty consensus', () => withPage(async page => {
+  const full = '>full\nTTACGTACG\n\nforward 1 --ACG-ACG 6\n            ||. |||\nreverse_rc 1 TTACATACG 9\n';
+  await assemble(page, { ...fixture, outputs: { consensus_full: full, consensus_strict: '>strict\nACGTACG\n' } });
+  assert.match(await page.locator('#strictReadCoverage').textContent(), /high-confidence region: 3–9 \(7 bp\)/);
+  assert.equal(await page.locator('#strictReadCoverage .map-boundaries').count(), 1);
+  assert.equal(await page.locator('.map-boundaries > span').evaluate(el => getComputedStyle(el).borderLeftStyle), 'solid');
+  await page.locator('#strictReadCoverage').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/sanger-high-confidence-coverage.png' });
+  await page.unroute(api);
+  await page.route(api, route => route.fulfill({ json: { ...fixture, outputs: { consensus_full: full, consensus_strict: '>strict\n\n' } }, headers: { 'access-control-allow-origin': '*' } }));
+  await page.getByRole('button', { name: 'Analyze', exact: true }).click();
+  await status(page, 'Analysis complete.');
+  assert.equal(await page.locator('#strictReadCoverage .map-boundaries').count(), 0);
+  assert.match(await page.locator('#strictReadCoverage').textContent(), /No high-confidence region was retained/);
 }, { width: 390, height: 844 }));
 
 test('missing server alignment is explained without inventing a local preview', () => withPage(async page => {
