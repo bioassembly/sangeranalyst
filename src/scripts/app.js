@@ -274,6 +274,7 @@ async function refreshTraces() {
 
   traceSection.style.display = 'block';
   tracePeakSelect.value = '';
+  document.getElementById('tracePeakStatus').hidden = false;
   const overlapStats = traceViewer.setData(fwd, rev, f?.name ?? '', r?.name ?? '');
 
   const labelR = document.getElementById('traceLabelR');
@@ -299,6 +300,7 @@ async function refreshTraces() {
 
 async function validateAb1Field(inputId, which, triggerRefresh = true) {
   invalidateResults();
+  traceViewer.setPeakCandidates(null);
   const input = document.getElementById(inputId);
   const file = input.files[0];
   let validFile = null;
@@ -718,6 +720,8 @@ analyzeBtn.addEventListener('click', async () => {
       analysis: data.analysis || null,
       orientation: data.summary?.orientation || null,
     })) return;
+    traceViewer.setPeakCandidates(data.summary?.secondary_peak_candidates);
+    document.getElementById('tracePeakStatus').hidden = data.summary?.secondary_peak_candidates?.schema_version === 1;
     renderResults(runState.result);
     setStatus('Analysis complete.');
   } catch (error) {

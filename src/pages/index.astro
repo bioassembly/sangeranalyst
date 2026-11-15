@@ -101,7 +101,13 @@ const baseCodes = [
             <button class="info-btn" id="secPeakInfoBtn" type="button" aria-label="Secondary peak info" aria-expanded="false" aria-controls="sec_tooltip">ℹ️</button>
           </div>
           <div class="small">
-            Secondary peaks reaching this percentage of the primary peak’s height are marked (<span style="color:#d97706">◆</span>). Mixed bases supported by secondary peaks are represented with IUPAC ambiguity codes.
+            Secondary peaks reaching this percentage of the primary peak’s height are marked (<span style="color:#d97706">◆</span>).
+          </div>
+          <div class="small">
+            Mixed bases supported by secondary peaks are represented with IUPAC ambiguity codes.
+          </div>
+          <div class="hint small">
+            <span>IUPAC base codes</span>
             <button class="info-btn" id="iupacInfoBtn" type="button" aria-label="IUPAC base codes" aria-expanded="false" aria-controls="iupac_tooltip">ℹ️</button>
           </div>
         </div>
@@ -161,6 +167,7 @@ const baseCodes = [
           <span>Each read uses one linear scale for all four bases.</span>
         </div>
         <p id="traceScaleNote" class="trace-scale-note" role="status" hidden>▲ Tall peaks exceed the display. Choose “Fit all peaks” to see their full height.</p>
+        <p id="tracePeakStatus" class="small">Analyze to detect secondary peaks.</p>
         <div id="tracePeakInspector" class="trace-peak-inspector" hidden>
           <div class="trace-peak-heading">Secondary peaks in input reads</div>
           <div class="trace-peak-picker">

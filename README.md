@@ -19,7 +19,7 @@ https://bioassembly.github.io/sangeranalyst
 
 ## ✨ Features
 
-- **Input chromatograms** — forward/reverse traces appear immediately on file selection or **Try demo data**, with zoom, pan, quality shading and secondary-peak markers. Typical-peak scaling keeps neighboring peaks readable; **Fit all peaks** reveals full heights. Select a marker or choose a peak to inspect its bases and original-signal ratio. This works without the analysis API.
+- **Input chromatograms** — forward/reverse traces appear immediately on file selection or **Try demo data**, with zoom, pan, quality shading and secondary-peak markers. Typical-peak scaling keeps neighboring peaks readable; **Fit all peaks** reveals full heights. Select a marker or choose a peak to inspect its bases and original-signal ratio. Traces work without the analysis API. Secondary-peak markers appear after Analyze and refilter locally when trimming or threshold settings change.
 - **Final read alignment** — the server's read alignment is visible immediately below each consensus, with mismatch/gap highlighting and preserved coordinates.
 - **Quality-weighted consensus** — Mott trimming, automatic orientation detection, statistically validated overlap, PolyPhred-style heterozygote calling (IUPAC codes), and conflict/secondary-peak reports embedded in each output.
 - **Smart upload & primer handling** — drag & drop `.ab1` auto-pairing (`_F`/`_R`, `27F`/`1492R`, etc.), 1-click `⇄` F/R swap, plus FASTA (`.fasta`/`.fa`/`.fna`/`.txt`) or pasted primer sequences (IUPAC accepted, min 10 bases).

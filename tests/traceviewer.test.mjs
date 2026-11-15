@@ -9,7 +9,7 @@ import {
   revcomp,
   alignColumns,
   computeMottTrimWindow,
-  detectTraceSecondaryPeaks,
+  filterSecondaryPeaks,
   attachTraceViewer,
   resolveTracePosition,
   calculateTraceScale,
@@ -182,30 +182,14 @@ test('computeMottTrimWindow trims low-quality 5-prime and 3-prime tails identica
   assert.deepEqual(computeMottTrimWindow(allBad, 0.05), [0, 30]);
 });
 
-test('detectTraceSecondaryPeaks finds local secondary maxima above threshold', () => {
-  const A = new Array(40).fill(10);
-  const G = new Array(40).fill(10);
-  const C = new Array(40).fill(10);
-  const T = new Array(40).fill(10);
-  // Primary A peak = 1000 at sample 20; secondary G local max = 420 (42%) at sample 20
-  A[19] = 500; A[20] = 1000; A[21] = 500;
-  G[19] = 150; G[20] = 420; G[21] = 150;
-
-  const rawRead = {
-    bases: 'AAA',
-    ploc: [8, 20, 32],
-    channels: { A, G, C, T },
-  };
-  const peaks = detectTraceSecondaryPeaks(rawRead, 33, false);
-  assert.equal(peaks.length, 1);
-  assert.equal(peaks[0].position, 2);
-  assert.equal(peaks[0].primaryBase, 'A');
-  assert.equal(peaks[0].secondaryBase, 'G');
-  assert.equal(peaks[0].percentage, 42);
-
-  const compPeaks = detectTraceSecondaryPeaks(rawRead, 33, true);
-  assert.equal(compPeaks[0].primaryBase, 'T');
-  assert.equal(compPeaks[0].secondaryBase, 'C');
+test('cached server peaks are filtered without accessing trace channels', () => {
+  const raw = { bases: 'AAAAAA', get channels() { throw new Error('Must not rescreen'); } };
+  const candidates = Array.from({length: 6}, (_, i) => ({position: i + 1, primary_base: 'A', secondary_base: 'G', percentage: 42, ratio: 42}));
+  assert.deepEqual(filterSecondaryPeaks(raw, candidates, 33, false, [2,4]).map(p => p.position), [3,4]);
+  assert.deepEqual(filterSecondaryPeaks(raw, candidates, 33, true, [2,4]).map(p => [p.primaryBase,p.secondaryBase]), [['T','C'],['T','C']]);
+  assert.equal(filterSecondaryPeaks(raw, candidates, 50).length, 0);
+  assert.equal(filterSecondaryPeaks(raw, candidates, 1).length, 6);
+  assert.equal(filterSecondaryPeaks(raw, [{...candidates[0], percentage:33, ratio:32.999}], 33).length, 0);
 });
 
 test('alignColumns aligns semi-global overlap and attachTraceViewer handles Reverse-only preview', () => {
@@ -274,15 +258,6 @@ test('alignColumns aligns semi-global overlap and attachTraceViewer handles Reve
   assert.equal(sampleRead.bases, origBases);
 });
 
-test('secondary-peak detection excludes both Mott-trimmed tails and retains raw positions', () => {
-  const ploc = [5, 15, 25, 35, 45, 55];
-  const A = new Array(65).fill(0), G = new Array(65).fill(0);
-  for (const sample of ploc) { A[sample] = 100; G[sample] = 50; }
-  const read = { bases: 'AAAAAA', ploc, channels: { A, G } };
-  assert.deepEqual(detectTraceSecondaryPeaks(read, 33, false, 3, [2, 4]).map(p => p.position), [3, 4]);
-  assert.deepEqual(detectTraceSecondaryPeaks(read, 33, true, 3, [2, 4]).map(p => [p.position, p.primaryBase, p.secondaryBase]), [[3, 'T', 'C'], [4, 'T', 'C']]);
-});
-
 test('outlier notice is determined on load and is not refreshed during panning', () => {
   const listeners = {};
   const scrollbar = { clientWidth: 600, scrollLeft: 0, firstElementChild: { style: {} }, addEventListener(event, handler) { listeners[event] = handler; } };
@@ -306,11 +281,4 @@ test('outlier notice is determined on load and is not refreshed during panning',
   viewer.setData(read, null);
   viewer.clear();
   assert.equal(note.hidden, true);
-});
-
-test('client screening retains every qualifying secondary channel, as the server does', () => {
-  const channels = { A: new Array(20).fill(0), C: new Array(20).fill(0), G: new Array(20).fill(0), T: new Array(20).fill(0) };
-  channels.A[10] = 100; channels.C[10] = 40; channels.G[10] = 70;
-  const peaks = detectTraceSecondaryPeaks({ bases: 'A', ploc: [10], channels }, 33);
-  assert.deepEqual(peaks.map(p => [p.secondaryBase, p.percentage]), [['G', 70], ['C', 40]]);
 });

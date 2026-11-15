@@ -194,71 +194,20 @@ export function computeMottTrimWindow(qual, cutoff = 0.1) {
   return [bestStart, bestEnd];
 }
 
-function findLocalMaxInWindow(trace, centerIdx, radius) {
-  const start = Math.max(0, centerIdx - radius);
-  const end = Math.min(trace.length - 1, centerIdx + radius);
-  if (end - start < 2) return null;
-
-  const searchStart = Math.max(1, start);
-  const searchEnd = Math.min(trace.length - 2, end);
-  let bestVal = -1;
-  let found = false;
-
-  for (let i = searchStart; i <= searchEnd; i++) {
-    const val = trace[i];
-    const prev = trace[i - 1];
-    const next = trace[i + 1];
-    if ((val >= prev && val > next) || (val > prev && val >= next)) {
-      if (val > bestVal) {
-        bestVal = val;
-        found = true;
-      }
-    }
-  }
-  return found ? bestVal : null;
-}
-
-// Client-side secondary peak detector matching sangeranalyst.py:detect_secondary_peaks.
-export function detectTraceSecondaryPeaks(rawRead, thresholdPct = 33, complementBases = false, searchWindow = 3, trimWindow = null) {
-  if (!rawRead || !rawRead.bases || !rawRead.ploc || !rawRead.channels) return [];
-  const pct = Number(thresholdPct);
-  if (!Number.isFinite(pct) || pct <= 0) return [];
-
-  const { bases, ploc, channels } = rawRead;
-  const limit = Math.min(ploc.length, bases.length);
-  const results = [];
-
-  const start = Math.max(0, trimWindow?.[0] ?? 0);
-  const end = Math.min(limit, trimWindow?.[1] ?? limit);
-  for (let i = start; i < end; i++) {
-    const centerLoc = ploc[i];
-    const primaryBase = bases[i];
-    const primaryTrace = channels[primaryBase];
-    if (!primaryTrace || centerLoc < 0 || centerLoc >= primaryTrace.length) continue;
-
-    const primarySignal = primaryTrace[centerLoc];
-    if (primarySignal < 1) continue;
-
-    for (const base of ['G', 'A', 'T', 'C']) {
-      if (base === primaryBase) continue;
-      const trace = channels[base];
-      if (!trace || !trace.length) continue;
-      const peakVal = findLocalMaxInWindow(trace, centerLoc, searchWindow);
-      if (peakVal !== null) {
-        const ratio = (peakVal / primarySignal) * 100.0;
-        if (ratio >= pct) {
-          results.push({
-            rawIndex: i,
-            position: i + 1,
-            primaryBase: complementBases ? (COMPLEMENT[primaryBase] || primaryBase) : primaryBase,
-            secondaryBase: complementBases ? (COMPLEMENT[base] || base) : base,
-            percentage: Math.round(ratio * 100) / 100,
-          });
-        }
-      }
-    }
-  }
-  return results;
+// Filtering cached server candidates never reads or screens trace channels.
+export function filterSecondaryPeaks(rawRead, candidates, thresholdPct, complementBases = false, trimWindow = null) {
+  if (!rawRead || !Array.isArray(candidates)) return [];
+  const start = trimWindow?.[0] ?? 0;
+  const end = trimWindow?.[1] ?? rawRead.bases.length;
+  return candidates.filter(peak => Number.isInteger(peak.position)
+    && peak.position > start && peak.position <= end
+    && Number.isFinite(peak.ratio ?? peak.percentage)
+    && (peak.ratio ?? peak.percentage) >= thresholdPct).map(peak => ({
+      rawIndex: peak.position - 1, position: peak.position,
+      primaryBase: complementBases ? (COMPLEMENT[peak.primary_base] || peak.primary_base) : peak.primary_base,
+      secondaryBase: complementBases ? (COMPLEMENT[peak.secondary_base] || peak.secondary_base) : peak.secondary_base,
+      percentage: peak.percentage,
+    }));
 }
 
 // Semi-global (overlap) Needleman-Wunsch: end gaps are free, so the reads
@@ -695,6 +644,7 @@ export function attachTraceViewer({
   onPeakSelected,
 }) {
   let rawReads = { F: null, R: null };
+  let peakCandidates = { F: [], R: [] };
   let reads = { F: null, R: null };
   let revComplemented = false;
   let mottCutoff = 0.1;
@@ -817,7 +767,7 @@ export function attachTraceViewer({
       reads.F.trimWindow = rawReads.F.qual
         ? computeMottTrimWindow(rawReads.F.qual, mottCutoff)
         : [0, reads.F.bases.length];
-      const spF = detectTraceSecondaryPeaks(rawReads.F, secPeakThreshold, false, 3, reads.F.trimWindow);
+      const spF = filterSecondaryPeaks(rawReads.F, peakCandidates.F, secPeakThreshold, false, reads.F.trimWindow);
       reads.F.secondaryPeaks = spF;
       reads.F.secPeakByIdx = strongestAtEachBase(spF, p => p.rawIndex);
     }
@@ -830,7 +780,7 @@ export function attachTraceViewer({
       } else {
         reads.R.trimWindow = [0, L];
       }
-      const spR = detectTraceSecondaryPeaks(rawReads.R, secPeakThreshold, revComplemented, 3, rawWindow);
+      const spR = filterSecondaryPeaks(rawReads.R, peakCandidates.R, secPeakThreshold, revComplemented, rawWindow);
       reads.R.secondaryPeaks = spR;
       reads.R.secPeakByIdx = strongestAtEachBase(spR, p => revComplemented ? L - 1 - p.rawIndex : p.rawIndex);
     }
@@ -856,6 +806,7 @@ export function attachTraceViewer({
   }
 
   function setData(fwdInput, revInput, nameF, nameR) {
+    peakCandidates = { F: [], R: [] };
     focusOffsets = { F: 0, R: 0 };
     rawReads = { F: cloneRawRead(fwdInput), R: cloneRawRead(revInput) };
     const fwd = cloneRawRead(fwdInput);
@@ -1052,6 +1003,12 @@ export function attachTraceViewer({
 
   return {
     setData,
+    setPeakCandidates(candidates) {
+      peakCandidates = candidates?.schema_version === 1
+        ? { F: candidates.forward || [], R: candidates.reverse || [] } : { F: [], R: [] };
+      recomputeAnnotations();
+      draw();
+    },
     focusPositions,
     clearFocus,
     setMottCutoff(val) {
@@ -1073,6 +1030,7 @@ export function attachTraceViewer({
       }
     },
     clear() {
+      peakCandidates = { F: [], R: [] };
       focusOffsets = { F: 0, R: 0 };
       rawReads = { F: null, R: null };
       reads = { F: null, R: null };

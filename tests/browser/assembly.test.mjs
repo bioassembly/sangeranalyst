@@ -16,6 +16,11 @@ const fixture = {
   outputs: { consensus_strict: report, consensus_full: fullReport },
   warnings: ['Review mixed bases before use.'],
   analysis: { schema_version: 1, tool: { revision: 'fixture-revision' } },
+  summary: { secondary_peak_candidates: {schema_version:1,minimum_threshold:1,forward:[],reverse:[
+    {position:5,primary_base:'A',secondary_base:'G',percentage:46.43},
+    {position:6,primary_base:'A',secondary_base:'G',percentage:59.05},
+    {position:8,primary_base:'A',secondary_base:'C',percentage:50.68},
+  ]}},
 };
 let server, browser;
 
@@ -167,7 +172,7 @@ test('secondary peak calls are readable and selecting a marker opens the matchin
       return move.call(this, x, y);
     };
   });
-  await demo(page);
+  await assemble(page);
   assert.equal(await page.locator('#tracePeakInspector').isVisible(), true);
   await page.getByLabel('Choose a peak').selectOption({ label: 'Reverse read 8: T / G' });
   assert.match(await page.locator('#tracePeakPosition').textContent(), /Reverse read, base 8/);
@@ -640,4 +645,24 @@ test('IUPAC information opens beside the input settings and result highlights ha
   const popup = await page.locator('#iupac_tooltip').boundingBox();
   assert.ok(popup.x >= 0 && popup.x + popup.width <= 390);
   assert.ok(popup.y >= 0 && popup.y + popup.height <= 844);
+}));
+
+test('server peak candidates remain cached and refilter when settings change', () => withPage(async page => {
+  let calls = 0;
+  await page.route(api, route => { calls++; return route.fulfill({json: fixture, headers:{'access-control-allow-origin':'*'}}); });
+  await demo(page);
+  assert.equal(await page.locator('#tracePeakInspector').isVisible(), false);
+  await page.getByRole('button', {name:'Analyze',exact:true}).click();
+  await status(page, 'Analysis complete.');
+  assert.equal(await page.locator('#tracePeakSelect option').count(), 2);
+  await page.locator('#secPeak').fill('100');
+  assert.equal(await page.locator('#tracePeakInspector').isVisible(), false);
+  await page.locator('#secPeak').fill('33');
+  assert.equal(await page.locator('#tracePeakSelect option').count(), 2);
+  await page.locator('#mottCutoff').fill('1');
+  assert.equal(await page.locator('#tracePeakSelect option').count(), 4);
+  assert.equal(calls, 1);
+  assert.equal(await page.locator('#staleResultNotice').isVisible(), true);
+  await page.locator('#fileR').setInputFiles([]);
+  assert.equal(await page.locator('#tracePeakInspector').isVisible(), false);
 }));
